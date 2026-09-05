@@ -1,0 +1,28 @@
+# LaraDogs — "Personal" profile.
+#
+# Minimal single-container setup for local/self-hosted use with SQLite.
+# The future "Server" profile (PostgreSQL, Redis, queue workers, scheduler,
+# reverse proxy) is tracked in docs/roadmap/roadmap.md and is intentionally
+# not built here — see ADR-0005.
+#
+# First run:
+#   cp .env.example .env
+#   docker compose up --build
+
+services:
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        env_file:
+            - .env
+        ports:
+            - '${APP_PORT:-8000}:8000'
+        volumes:
+            - laradogs-database:/app/database
+            - laradogs-storage:/app/storage
+        restart: unless-stopped
+
+volumes:
+    laradogs-database:
+    laradogs-storage:

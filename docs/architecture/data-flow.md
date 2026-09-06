@@ -53,27 +53,55 @@ No `Finding` is produced and no scanner runs — see
 [`../auditing/project-discovery.md`](../auditing/project-discovery.md) and
 [ADR-0008](decisions/ADR-0008-static-project-discovery.md).
 
-## Planned: a full audit run (Phase 2+)
+## Implemented: Audit Engine foundation (Phase 2)
+
+```
+AuditContext (runId, projectPath, ProjectProfile from Discovery, settings)
+  │
+  ▼
+AuditEngine::plan()
+  │  for each registered Analyzer: applicability(profile) → (if applicable)
+  │  availability(context) — run() is never called here
+  ▼
+AuditPlan (ordered AuditPlanItem list — Planned / NotApplicable / Unavailable)
+  │
+  ▼
+AuditEngine::execute(plan, context)
+  │  Planned items: run() inside try/catch, exceptions normalized to Failed;
+  │  NotApplicable/Unavailable items: carried over, run() never called;
+  │  continue_on_failure=false: remaining Planned items after a failure → Skipped
+  ▼
+AuditRunResult (runId, plan, one AnalyzerExecution per item, timing)
+```
+
+No real analyzer exists yet (only synthetic ones under
+`tests/Support/Engine/Analyzers/`), no `Finding` is produced, and nothing
+is persisted — see
+[`../auditing/audit-engine.md`](../auditing/audit-engine.md) and
+[ADR-0009](decisions/ADR-0009-audit-engine-foundation.md).
+
+## Planned: a full audit run (Phase 3+)
 
 Not implemented. Recorded here so the eventual implementation has a target
 shape consistent with [ADR-0002](decisions/ADR-0002-application-architecture.md)
-and [ADR-0004](decisions/ADR-0004-scanner-execution-strategy.md). Phase 1
-(above) already delivers the first step; Phase 2 wraps it in orchestration
-and adds everything after it.
+and [ADR-0004](decisions/ADR-0004-scanner-execution-strategy.md). Phases 1
+and 2 (above) already deliver stack detection and the orchestration
+foundation; what's missing is real analyzers, `Finding` normalization, and
+persistence.
 
 ```
 CLI / MCP tool / Dashboard "Run Scan" action
   │
   ▼
-Audit Core: stack detection (Project Discovery — implemented, see above)
+Audit Core: stack detection (Project Discovery — implemented)
   ▼
-Audit Core: scanner selection
-  │  (which of composer audit / npm audit / PHPStan / Larastan / ESLint /
-  │   Semgrep / OSV-Scanner / Trivy / Pest / PHPUnit are applicable and
-  │   installed)
+Audit Core: analyzer selection (Audit Engine planning — implemented,
+  │  foundation only: no real analyzer registered yet)
   ▼
-Audit Core: scanner execution
-  │  (isolated subprocess: timeout, resource limits, non-root — see ADR-0004)
+Audit Core: analyzer execution
+  │  (real analyzers, isolated subprocess via ProcessRunner — contract
+  │   exists, Phase 4 implements it; timeout, resource limits, non-root —
+  │   see ADR-0004/ADR-0009)
   ▼
 Audit Core: normalization
   │  (raw scanner output → Finding shape — see ADR-0003)
@@ -91,9 +119,10 @@ Persistence: immutable Scan record + Findings
 Findings ──▶ CLI output / MCP tool response / Dashboard views / CI gate
 ```
 
-Only the first "Audit Core" box (stack detection) currently corresponds to
-a directory in this repository (`app/Audit/Discovery/`) — the rest (scanner
-selection/execution/normalization/correlation/rules, and persistence) does
-not exist yet. See [`components.md`](components.md) for what exists today,
-and [`../roadmap/phases.md`](../roadmap/phases.md) for when each stage is
+The first two "Audit Core" boxes (stack detection, analyzer
+selection/planning) currently correspond to directories in this repository
+(`app/Audit/Discovery/`, `app/Audit/Engine/`) — analyzer
+execution/normalization/correlation/rules, and persistence, do not exist
+yet. See [`components.md`](components.md) for what exists today, and
+[`../roadmap/phases.md`](../roadmap/phases.md) for when each stage is
 expected to land.

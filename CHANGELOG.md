@@ -6,6 +6,60 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 2: Audit Engine Foundation
+
+### Added
+
+- **Audit Engine foundation** (`app/Audit/Engine/`): consumes Phase 1's
+  `ProjectProfile` to decide which analyzers apply
+  (`Applicability`/`ApplicabilityStatus`) and are actually runnable on
+  this host (`Availability`/`AvailabilityStatus`), builds an inspectable
+  `AuditPlan` (never executes anything while planning), executes it, and
+  normalizes every outcome — success, reported failure, thrown exception,
+  timeout, unavailable, not-applicable, and (new) fail-fast skip — into an
+  `AuditRunResult`. See
+  [`docs/auditing/audit-engine.md`](docs/auditing/audit-engine.md) and
+  [ADR-0009](docs/architecture/decisions/ADR-0009-audit-engine-foundation.md).
+- `Analyzer` contract (`id()`/`name()`/`category()`/`applicability()`/
+  `availability()`/`run()`), `AnalyzerId`, `AnalyzerCategory` (mirrors the
+  planned `Finding` category list), `AnalyzerRegistry` (duplicate-id
+  guard, deterministic registration order).
+- `ExecutionStatus` (`Planned`/`Passed`/`Failed`/`TimedOut`/`Skipped`/
+  `NotApplicable`/`Unavailable`), `AnalyzerResult`, `AnalyzerDiagnostic`
+  (analyzer-execution problems — explicitly distinct from a future
+  `Finding`), `AuditContext`, `AuditExecutionSettings` (`continueOnFailure`,
+  default `true`, actually enforced in both directions — a real fail-fast
+  path, not just a documented intent).
+- `ProcessRunner`/`ProcessCommand`/`ProcessResult` contract
+  (`app/Audit/Engine/Process/`) — the future real-process-execution
+  boundary (Phase 4+), recorded now with **zero implementation**: argv-only
+  (no shell string field), explicit working directory/environment/timeout.
+  Nothing in this phase constructs or calls one.
+- 8 synthetic `Analyzer` implementations under
+  `tests/Support/Engine/Analyzers/` (never autoloaded in production):
+  `AlwaysPassAnalyzer`, `AlwaysFailAnalyzer`, `ThrowingAnalyzer`,
+  `TimedOutAnalyzer`, `UnavailableAnalyzer`, `NotApplicableAnalyzer`,
+  `LaravelOnlyAnalyzer`/`NodeOnlyAnalyzer` (real applicability against
+  real Phase 1 fixtures), `SpyAnalyzer`.
+- 31 new Pest tests covering the registry, applicability vs. availability,
+  planning, execution (success/failure/exception/timeout/continue-on-
+  failure/fail-fast/deterministic ordering), serialization, a static
+  no-shell-execution scan of the engine's own source, and a dedicated test
+  extending Phase 1's no-code-execution guarantee through the new
+  Discovery → AuditContext → AuditEngine pipeline.
+
+### Notes
+
+- No real scanner integration (`composer audit`, `npm audit`, PHPStan,
+  Semgrep, Trivy, OSV-Scanner) — that's Phase 4. This phase validated the
+  orchestration contract against synthetic analyzers only.
+- No `Finding`/`Scan` model, no persistence — that's Phase 3.
+- No CLI this phase (`laradogs:audit-plan` was considered and deliberately
+  not built — see the Phase 2 report/`audit-engine.md` for why: with zero
+  real analyzers registered in production, it would only ever show an
+  empty plan).
+- No new Composer/npm dependencies.
+
 ## [Unreleased] — Phase 1: Project Discovery Engine
 
 ### Added

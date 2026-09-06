@@ -1,8 +1,9 @@
 # Components (Current State)
 
 This describes what exists in the repository today — the Laravel starter
-kit foundation from Phase 0, plus Project Discovery (Phase 1) — not the
-full target audit architecture. See [`overview.md`](overview.md) for that.
+kit foundation from Phase 0, plus Project Discovery (Phase 1) and the
+Audit Engine foundation (Phase 2) — not the full target audit
+architecture. See [`overview.md`](overview.md) for that.
 
 ## Backend (`app/`)
 
@@ -10,6 +11,7 @@ full target audit architecture. See [`overview.md`](overview.md) for that.
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `app/Actions/Fortify/`           | Fortify action classes (user creation, password validation/reset) — starter-kit auth, not LaraDogs-specific.           |
 | `app/Audit/Discovery/`           | **Project Discovery Core** (Phase 1) — see below.                                                                      |
+| `app/Audit/Engine/`              | **Audit Engine foundation** (Phase 2) — see below.                                                                     |
 | `app/Http/Controllers/`          | Inertia page controllers and Fortify-adjacent controllers.                                                             |
 | `app/Http/Controllers/Settings/` | User settings pages (profile, password, appearance, two-factor, passkeys).                                             |
 | `app/Http/Middleware/`           | `HandleAppearance` (theme cookie) and `HandleInertiaRequests` (shared Inertia props).                                  |
@@ -38,6 +40,28 @@ the decision behind _how_ it's safe to run against untrusted code:
 | `Support/`                         | `Detection`/`VersionDetection` value objects, `DetectionStatus` enum, `DiscoveryIssue`.                                                                                                                                 |
 
 No `Finding`/`Scan` model or persistence exists yet — that's still Phase 3.
+
+### Audit Engine (`app/Audit/Engine/`)
+
+Orchestration foundation between a `ProjectProfile` and real scanner
+integrations (Phase 4+) — no real analyzer exists yet, only the contract
+and synthetic ones for testing. Full detail, lifecycle, and security
+boundary: [`../auditing/audit-engine.md`](../auditing/audit-engine.md);
+the decision behind the Analyzer contract and process-execution boundary:
+[ADR-0009](decisions/ADR-0009-audit-engine-foundation.md).
+
+| Path               | Purpose                                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AuditEngine.php`  | Orchestrates registry → applicability/availability → plan → execution → result.                                                            |
+| `AuditContext.php` | What an analyzer needs: run id, project path, `ProjectProfile`, execution settings.                                                        |
+| `Contracts/`       | `Analyzer` interface, `AnalyzerId`, `AnalyzerCategory`, `Applicability`/`ApplicabilityStatus`, `Availability`/`AvailabilityStatus`.        |
+| `Registry/`        | `AnalyzerRegistry` (explicit registration, duplicate-id guard, deterministic order), `DuplicateAnalyzerIdException`.                       |
+| `Plan/`            | `AuditPlan`, `AuditPlanItem` — inspectable, JSON-safe, built without executing anything.                                                   |
+| `Execution/`       | `ExecutionStatus`, `AnalyzerResult`, `AnalyzerDiagnostic`/`DiagnosticLevel`, `AnalyzerExecution`, `AuditRunResult`.                        |
+| `Process/`         | `ProcessRunner` (interface, no implementation), `ProcessCommand`, `ProcessResult` — the future real-process-execution boundary (Phase 4+). |
+
+No real `Analyzer` is registered anywhere in production; synthetic ones
+for exercising the engine live under `tests/Support/Engine/Analyzers/`.
 
 ## Frontend (`resources/js/`)
 
@@ -84,11 +108,15 @@ Phase 7.
 
 - Pest, under `tests/Feature` and `tests/Unit`. Starter-kit auth flows
   (login, registration, password reset, email verification, two-factor,
-  passkeys, settings) — 39 tests from Phase 0 — plus Project Discovery
+  passkeys, settings) — 39 tests from Phase 0 — Project Discovery
   (`tests/Unit/Audit/Discovery/`, `tests/Feature/Console/`) — 26 tests
-  from Phase 1, including a dedicated no-code-execution guarantee test.
-  65 tests total, all passing. See
+  from Phase 1 — and the Audit Engine (`tests/Unit/Audit/Engine/`,
+  `tests/Feature/Audit/Engine/`) — 31 tests from Phase 2, including
+  dedicated no-target-execution and no-shell-execution guarantee tests.
+  96 tests total, all passing. See
   [`../development/testing.md`](../development/testing.md).
+- `tests/Support/Engine/Analyzers/` — synthetic `Analyzer` implementations
+  (never autoloaded in production) used only by the Audit Engine's tests.
 - `tests/Fixtures/discovery/` — small, synthetic project fixtures (never
   real projects) used only by Discovery's tests.
 

@@ -5,8 +5,8 @@
 | Phase | Name                                    | Status                    |
 | ----- | --------------------------------------- | ------------------------- |
 | 0     | Discovery / Architecture / Bootstrap    | **Complete**              |
-| 1     | Project Discovery (stack detection)     | **Complete** (this phase) |
-| 2     | Audit Engine Foundation                 | Not started               |
+| 1     | Project Discovery (stack detection)     | **Complete**              |
+| 2     | Audit Engine Foundation                 | **Complete** (this phase) |
 | 3     | Finding Domain + Persistence            | Not started               |
 | 4     | Security / Dependency Scanners          | Not started               |
 | 5     | Bug / Quality Analysis                  | Not started               |
@@ -39,12 +39,30 @@ evidence-based stack detector (Laravel/Blade/Livewire/Inertia/React/Vue/
 TypeScript/testing tools/Docker/CI/database driver hints), a normalized
 `ProjectProfile` with explicit `detected`/`not_detected`/`unknown`/
 `invalid` states, a `laradogs:inspect` CLI command (human-readable and
-`--json` output), 13 synthetic fixtures, 26 tests (including a dedicated
+`--json` output), 14 synthetic fixtures, 26 tests (including a dedicated
 no-code-execution guarantee test), and
 [`project-discovery.md`](../auditing/project-discovery.md) +
 [ADR-0008](../architecture/decisions/ADR-0008-static-project-discovery.md).
 No scanners, no `Finding`/`Scan` model, no persistence — see the Phase 1
 report for the full account.
+
+## What Phase 2 actually delivered
+
+The Audit Engine foundation (`app/Audit/Engine/`): the `Analyzer`
+contract (`applicability()`/`availability()`/`run()`), `AnalyzerId`/
+`AnalyzerCategory`, an `AnalyzerRegistry` with a duplicate-id guard and
+deterministic ordering, `AuditPlan`/`AuditPlanItem` (built without
+executing anything), execution with exception-safety and a real
+`continue_on_failure` fail-fast path, `AuditRunResult` normalizing every
+outcome, and a `ProcessRunner` contract (no implementation) recording the
+future real-process-execution boundary. 31 tests (including dedicated
+no-target-execution and no-shell-execution guarantee tests) against
+synthetic analyzers only, plus
+[`audit-engine.md`](../auditing/audit-engine.md) +
+[ADR-0009](../architecture/decisions/ADR-0009-audit-engine-foundation.md).
+No real scanner integration, no `Finding` model, no persistence, no CLI
+(deliberately — see the Phase 2 report) — see the Phase 2 report for the
+full account.
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

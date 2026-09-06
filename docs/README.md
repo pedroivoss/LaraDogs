@@ -42,10 +42,14 @@ findings, history, the dashboard, MCP — does not exist in code yet. See
   **Implemented (Phase 1).** Static, evidence-based stack detection —
   what it detects, its security model, and CLI usage. Not auditing: no
   scanners run, no `Finding` is produced.
-- The rest of `auditing/` describes the **planned** domain model
-  (Phase 2-3+) that Discovery feeds into. None of it is implemented yet —
-  it exists so that Phase 2+ work has an agreed target instead of
-  improvising mid-implementation.
+- [`auditing/audit-engine.md`](auditing/audit-engine.md) — **Implemented
+  (Phase 2), foundation only.** The Analyzer contract, applicability vs.
+  availability, planning, execution, and result normalization — exercised
+  with synthetic analyzers. No real scanner integration exists yet.
+- The rest of `auditing/` describes the **planned** domain model (Phase
+  3+) that the engine will feed into. None of it is implemented yet — it
+  exists so that Phase 3+ work has an agreed target instead of improvising
+  mid-implementation.
     - [`auditing/overview.md`](auditing/overview.md)
     - [`auditing/findings.md`](auditing/findings.md)
     - [`auditing/severity.md`](auditing/severity.md)

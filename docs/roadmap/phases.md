@@ -38,13 +38,24 @@ not part of this phase's `ProjectProfile`; ADR-0004 calls that out as
 scanner-availability detection, and it's addressed when Phase 4 actually
 integrates those scanners, not guessed at here.
 
-## Phase 2 — Audit Engine Foundation
+## Phase 2 — Audit Engine Foundation ✅ Complete
 
-The orchestration layer: given a detected stack, decide which scanners
-apply, run them (in isolation — see ADR-0004), and produce raw,
-un-normalized output. No `Finding` model yet — that's Phase 3. This is
-where `app/Audit/...` (or equivalent namespace) is expected to be
-introduced, per ADR-0002.
+The orchestration layer: given a `ProjectProfile`, decide which analyzers
+apply (`Applicability`) and are actually runnable on this host
+(`Availability`), build an inspectable `AuditPlan`, execute it, and
+normalize every outcome (success/failure/exception/timeout/skip) into an
+`AuditRunResult`. See
+[`../auditing/audit-engine.md`](../auditing/audit-engine.md) and
+[ADR-0009](../architecture/decisions/ADR-0009-audit-engine-foundation.md).
+
+**No real scanner integration** (`composer audit`, `npm audit`, PHPStan,
+Semgrep, Trivy, OSV-Scanner, ESLint, Pest/PHPUnit-as-scanner) exists yet —
+that's Phase 4. This phase validated the orchestration contract against
+synthetic analyzers only. No `Finding` model yet — that's Phase 3. A
+`ProcessRunner` interface (real subprocess execution, isolated — see
+ADR-0004) is recorded now with zero implementation, so Phase 4's first
+real analyzer has a stable contract instead of reaching for
+`shell_exec()` inline.
 
 ## Phase 3 — Finding Domain + Persistence
 

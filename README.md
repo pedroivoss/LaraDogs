@@ -3,11 +3,12 @@
 **Watch over your Laravel applications.** _(tagline — provisional)_
 
 **Status: Early Development.** This repository currently contains a
-bootstrapped Laravel application (Phase 0) plus a static project stack
-detector (Phase 1) — no security/quality auditing functionality yet. If
-you're looking for a working security scanner, this isn't one yet — see
-[Current Capabilities](#current-capabilities) for exactly what exists
-today.
+bootstrapped Laravel application (Phase 0), a static project stack
+detector (Phase 1), and an analyzer orchestration foundation exercised
+only with synthetic analyzers (Phase 2) — no security/quality auditing
+functionality yet. If you're looking for a working security scanner, this
+isn't one yet — see [Current Capabilities](#current-capabilities) for
+exactly what exists today.
 
 ## The problem
 
@@ -106,6 +107,14 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   auditing**: no scanners run, no vulnerability is reported, no `Finding`
   is produced. See
   [`docs/auditing/project-discovery.md`](docs/auditing/project-discovery.md).
+- **Audit Engine foundation** (Phase 2) — the orchestration layer that
+  will decide which analyzers apply to a `ProjectProfile`, check whether
+  each is actually runnable on the host, build an inspectable plan, run
+  it, and normalize every outcome. Exercised with synthetic analyzers
+  only — **no real scanner is registered or integrated yet.** This is
+  architecture, **not scanners**: `composer audit`/`npm audit`/PHPStan/
+  Semgrep/etc. still don't run. See
+  [`docs/auditing/audit-engine.md`](docs/auditing/audit-engine.md).
 - A Laravel 13 application with React + Inertia (official starter kit),
   Fortify-based authentication, and a single authenticated dashboard page
   (Phase 0).
@@ -118,11 +127,12 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
 - The documentation and architectural decisions this README links to.
 
 **Not yet implemented** (everything that makes LaraDogs actually useful
-as a _security/quality tool_, beyond stack detection):
+as a _security/quality tool_, beyond stack detection and orchestration
+architecture):
 
-- Security scanning, bug detection, performance analysis, any scanner
-  integration (`composer audit`, `npm audit`, PHPStan/Larastan, ESLint,
-  Semgrep, OSV-Scanner, Trivy).
+- Any real scanner integration (`composer audit`, `npm audit`, PHPStan/
+  Larastan, ESLint, Semgrep, OSV-Scanner, Trivy) — security scanning, bug
+  detection, performance analysis.
 - The `Finding`/`Scan` domain model, Laravel-aware rules, history/
   comparison, quality gates.
 - The real Dashboard (findings/scans/rules/reports/quality
@@ -221,9 +231,10 @@ calling agent does that, using context LaraDogs provides. See
 
 ## Roadmap
 
-Phase 0 (bootstrap) and Phase 1 (Project Discovery) are complete. Phases
-2–13 (Audit Engine Foundation through Hardening/Release) are not started.
-Full list, current position, and items deliberately deferred:
+Phase 0 (bootstrap), Phase 1 (Project Discovery), and Phase 2 (Audit
+Engine Foundation) are complete. Phases 3–13 (Finding Domain + Persistence
+through Hardening/Release) are not started. Full list, current position,
+and items deliberately deferred:
 [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
 
 ## Contributing

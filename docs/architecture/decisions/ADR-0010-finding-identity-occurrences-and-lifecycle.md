@@ -7,6 +7,16 @@ without changing its core decisions; this ADR resolves the details ADR-0003
 deliberately left open (exact fingerprint algorithm, occurrence/history
 split, auto-resolution safety).
 
+**Note (Phase 4):** `ProducesFindingCandidates` and `ScanRunner`
+(`App\Audit\Findings\Ingestion`) were added to connect a real, concrete
+analyzer (`App\Audit\Analyzers\Composer\ComposerAuditAnalyzer`) to this
+domain's persistence without letting `App\Audit\Engine` depend on
+Findings — see
+[ADR-0011's "related, smaller decision"](ADR-0011-safe-external-process-execution.md#a-related-smaller-decision-connecting-a-real-analyzer-to-findings-without-a-circular-dependency).
+An additive extension of this ADR's existing ingestion pipeline
+(`FindingIngestor`/`ScanRecorder`, both unchanged), not a new
+architectural decision about Finding identity/lifecycle itself.
+
 **Amended (Phase 3.1 — Safe Finding Resolution Coverage):** the original
 auto-resolution rule below ("its own analyzer completed this scan with
 `Passed`") was necessary but not sufficient, and has been tightened. See

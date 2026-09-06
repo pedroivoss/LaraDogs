@@ -1,0 +1,7 @@
+{
+    "advisories": {
+        "vendor/vulnerable-package": [
+            {
+                "advisoryId": "PKSA-abcd-1234-efgh",
+                "packageName": "vendor/vulnerable-package",
+            

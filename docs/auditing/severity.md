@@ -17,7 +17,16 @@ independent of how sure LaraDogs is that the finding is real — see
 - `LOW` — minor impact; best-practice deviation with limited real-world
   consequence.
 - `INFO` — informational; not a problem by itself, useful context.
+- `UNKNOWN` — the finding is real, but the source did not report a
+  magnitude for it (added in Phase 4: real Composer security advisories
+  frequently have a `null` `severity` field upstream). Distinct from
+  `INFO`, which means "not a problem" — `UNKNOWN` means "is a problem,
+  magnitude not stated." Never assigned by LaraDogs guessing; only when
+  the underlying data genuinely carries none.
 
-Concrete severity assignment rules per rule/category are not defined yet —
-they'll be introduced alongside the first real scanners and rules
-(Phase 4+), not invented speculatively here.
+Concrete severity assignment rules per rule/category are introduced
+per-analyzer as real scanners are added. The first, `composer-audit`
+(Phase 4), maps Composer's own `severity` string directly
+(`critical`/`high`/`medium`/`low` → the matching level, anything else
+including `null` → `UNKNOWN`) — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md#severity-and-confidence).

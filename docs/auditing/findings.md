@@ -1,13 +1,16 @@
 # Findings
 
-**Status: Implemented (Phase 3).** `Finding`/`FindingOccurrence` are real,
-persistent, tested models — see
+**Status: Implemented (Phase 3; Phase 4 adds the first real producer).**
+`Finding`/`FindingOccurrence` are real, persistent, tested models — see
 [`findings-lifecycle.md`](findings-lifecycle.md) for ingestion, lifecycle,
 and auto-resolution safety, and
 [ADR-0010](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md)
-for the design decisions. **No real scanner produces a `Finding` yet** —
-that's Phase 4+; everything here is exercised with synthetic
-`FindingCandidate`s in tests.
+for the design decisions. As of Phase 4, one real analyzer
+(`composer-audit`, see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md)) produces
+real `FindingCandidate`s from real `composer audit` advisories; synthetic
+candidates are still used throughout this domain's own unit/integration
+tests.
 
 A finding is the atomic unit of everything LaraDogs reports — never raw
 scanner stdout, a Semgrep result, a Composer advisory, or a CVE directly;
@@ -83,3 +86,20 @@ Every status change, automatic or manual, is recorded in
 `finding_status_histories` — see
 [`findings-lifecycle.md`](findings-lifecycle.md#lifecycle) and
 [`suppressions.md`](suppressions.md).
+
+## ScanRunner (Phase 4)
+
+`App\Audit\Findings\Ingestion\ScanRunner` is the minimal orchestration
+seam between the Engine (`AuditEngine`, which must never depend on
+Findings — ADR-0010) and this domain's persistence: it opens a `Scan`,
+runs a real `AuditEngine`, then — for every executed analyzer that also
+implements `App\Audit\Findings\Ingestion\ProducesFindingCandidates` (the
+new capability interface a concrete analyzer implements alongside
+`Analyzer`, living here rather than in Engine specifically so Engine
+never has to depend on `FindingCandidate`) — normalizes its
+`AnalyzerResult` into candidates and hands everything to the existing
+`ScanRecorder`. It looks the original analyzer instance back up in the
+same `AnalyzerRegistry` the engine ran against, since an `AnalyzerExecution`
+deliberately carries no reference to it. See
+[`components.md`](../architecture/components.md) for where this sits in
+the overall dependency graph.

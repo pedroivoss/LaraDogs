@@ -1,12 +1,18 @@
 # Audit Engine (Foundation)
 
-**Status: Implemented (Phase 2) — foundation only, no real scanners.**
+**Status: Implemented (Phase 2 foundation; Phase 4 adds the first real
+analyzer and process-execution implementation).**
 This is the orchestration layer between a `ProjectProfile` (Phase 1) and
-real scanner integrations (Phase 4+). It does not itself detect anything
-about a project (that's Discovery) and does not itself run
-`composer audit`/`npm audit`/Semgrep/PHPStan/etc. against a project (that's
-Phase 4). See [ADR-0009](../architecture/decisions/ADR-0009-audit-engine-foundation.md)
-for the decisions behind this design.
+real scanner integrations. It does not itself detect anything about a
+project (that's Discovery) and never runs a scanner directly — that's
+each concrete `Analyzer`'s own job, via `ProcessRunner`. As of Phase 4,
+exactly one real analyzer is registered in production:
+`App\Audit\Analyzers\Composer\ComposerAuditAnalyzer` — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md). See
+[ADR-0009](../architecture/decisions/ADR-0009-audit-engine-foundation.md)
+for the engine's own foundational decisions and
+[ADR-0011](../architecture/decisions/ADR-0011-safe-external-process-execution.md)
+for process execution.
 
 ## Purpose
 
@@ -64,9 +70,12 @@ QUALITY | CONFIGURATION | TEST`, mirroring the `Finding` category list
 - No `AnalyzerCapability` concept exists — see ADR-0009 for why it was
   considered and left out for now.
 
-No real `Analyzer` implementation exists in production code. Synthetic
-ones for testing the engine live under `tests/Support/Engine/Analyzers/`
-(never autoloaded in production) — see [Fake analyzers](#fake-analyzers).
+The first real `Analyzer` implementation, `ComposerAuditAnalyzer`, was
+added in Phase 4 — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md). Synthetic
+ones for testing the engine itself still live under
+`tests/Support/Engine/Analyzers/` (never autoloaded in production) — see
+[Fake analyzers](#fake-analyzers).
 
 ## Analyzer lifecycle
 
@@ -194,28 +203,34 @@ but nothing about the type is Findings-specific.
   1's malicious-scripts fixture, runs it through Discovery → `AuditEngine`
   with fake analyzers, and asserts the scripts' marker file is never
   created.
-- **Process execution boundary:** a real analyzer (Phase 4+) that needs to
-  shell out to an external tool must do so only through a
-  `ProcessRunner` implementation (`app/Audit/Engine/Process/`) — never an
-  inline `shell_exec()`/`exec()`/`system()`/`proc_open()`. That interface
-  has **zero implementation today**; it exists only as the contract:
+- **Process execution boundary:** a real analyzer that needs to shell out
+  to an external tool does so only through a `ProcessRunner`
+  implementation (`app/Audit/Engine/Process/`) — never an inline
+  `shell_exec()`/`exec()`/`system()`/`proc_open()`. As of Phase 4 this has
+  a real implementation, `SymfonyProcessRunner` (built on Symfony
+  Process — see
+  [`../development/process-execution.md`](../development/process-execution.md)
+  and [ADR-0011](../architecture/decisions/ADR-0011-safe-external-process-execution.md)):
     - **Shell:** `ProcessCommand` carries an `argv` list, never a shell
-      string — there's no field to interpolate untrusted input into.
+      string — there's no field to interpolate untrusted input into, and
+      `SymfonyProcessRunner` never calls Symfony's shell-string factory.
     - **Working directory:** explicit, controlled (`workingDirectory`), not
       inherited from the caller's cwd.
-    - **Environment:** an explicit allowlist (`environment` array), never
-      the full parent environment.
-    - **Timeout:** `timeoutSeconds`, reported back via
-      `ProcessResult::$timedOut` — enforcement is the future
-      implementation's job, not this phase's.
-    - **Output caps:** `ProcessResult` carries `stdout`/`stderr` under the
-      assumption a real implementation caps them; this phase doesn't enforce
-      a cap since nothing produces output yet.
+    - **Environment:** an explicit allowlist (`environment` array) — a real
+      allowlist, not a merge; see process-execution.md for why a naive
+      `setEnv()` call would still leak the full parent environment.
+    - **Timeout:** `timeoutSeconds`, enforced and reported back via
+      `ProcessResult::$timedOut`.
+    - **Output caps:** captured via a streaming callback with a byte cap
+      (`SymfonyProcessRunner::DEFAULT_MAX_OUTPUT_BYTES`, configurable),
+      reporting truncation via `ProcessResult::$outputTruncated` rather
+      than buffering unboundedly.
       A static test (`tests/Unit/Audit/Engine/NoShellExecutionTest.php`) scans
-      every file under `app/Audit/Engine/` (comments stripped) for
+      every file under `app/Audit/Engine/` AND `app/Audit/Analyzers/`
+      (comments stripped) for
       `shell_exec`/`exec`/`system`/`passthru`/`proc_open`/`popen` and fails if
-      any appear — proving the boundary isn't quietly bypassed even before a
-      real `ProcessRunner` exists.
+      any appear — proving the boundary isn't quietly bypassed by a future
+      analyzer either.
 - **No implicit engine behavior:** a `SpyAnalyzer` test proves the engine
   calls `applicability()`/`availability()`/`run()` exactly once each, in
   that order, only when the contract says it should — no hidden
@@ -238,22 +253,20 @@ Under `tests/Support/Engine/Analyzers/` (never autoloaded in production):
 
 ## CLI
 
-**NOT IMPLEMENTED.** A `laradogs:audit-plan {path}` command was
-considered but deliberately not built this phase: with zero real
-analyzers registered in production (fakes are intentionally kept out of
-production autoloading, per this phase's scope), the command would only
-ever display an empty plan — no `AuditPlanItem` could ever appear. That
-demonstrates nothing the automated test suite doesn't already cover far
-more thoroughly, and building it would tempt introducing "demonstration"
-analyzers into production code paths, blurring the line this phase
-intentionally keeps sharp ("no real scanner integration yet"). Phase 1's
-CLI had real value immediately because Discovery had real, non-fake
-capability to show; the Audit Engine will get equivalent CLI value once
-Phase 4 registers at least one real analyzer to actually plan against.
+**IMPLEMENTED (Phase 4):** `php artisan laradogs:audit {path} [--json]
+[--analyzer=composer-audit]` — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md#cli) for
+details. It prints one real `AuditRunResult` and deliberately does not
+persist a `Scan` (see that doc for why).
 
 ## Persistence
 
-Nothing in this phase is persisted: `ProjectProfile`, `AuditPlan`,
-`AuditRunResult`, and every `AnalyzerResult`/`AnalyzerExecution` exist only
-in memory for the duration of one `AuditEngine::run()` call. Phase 3 owns
-the persistent domain (`Finding`/`Scan`).
+`AuditEngine::run()` itself still persists nothing — `ProjectProfile`,
+`AuditPlan`, `AuditRunResult`, and every `AnalyzerResult`/
+`AnalyzerExecution` exist only in memory for the duration of one call.
+Phase 3 owns the persistent domain (`Finding`/`Scan`); Phase 4 adds the
+orchestration seam that connects the two —
+`App\Audit\Findings\Ingestion\ScanRunner` — without either namespace
+depending on the other in the wrong direction. See
+[`findings.md`](findings.md#scanrunner-phase-4) and
+[`components.md`](../architecture/components.md).

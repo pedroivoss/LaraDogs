@@ -5,10 +5,11 @@ This is the documentation index for LaraDogs. It is organized so that
 auditing will work" (auditing), and "how it connects to other tools"
 (integrations) are separate concerns.
 
-**Status: Early Development.** Most of what LaraDogs is _for_ — real
-scanners, the dashboard, MCP — does not exist in code yet, though stack
-detection, orchestration, and the Finding domain/lifecycle now do. See
-[`roadmap/phases.md`](roadmap/phases.md) for what phase we're in and
+**Status: Early Development.** Most of what LaraDogs is _for_ — the
+dashboard, MCP, most scanners — does not exist in code yet, though stack
+detection, orchestration, the Finding domain/lifecycle, real process
+execution, and one real scanner (`composer audit`) now do. See
+[`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in and
 [`../README.md`](../README.md) for the Implemented/Planned split.
 
 ## Architecture
@@ -44,20 +45,29 @@ detection, orchestration, and the Finding domain/lifecycle now do. See
   what it detects, its security model, and CLI usage. Not auditing: no
   scanners run, no `Finding` is produced.
 - [`auditing/audit-engine.md`](auditing/audit-engine.md) — **Implemented
-  (Phase 2), foundation only.** The Analyzer contract, applicability vs.
-  availability, planning, execution, and result normalization — exercised
-  with synthetic analyzers. No real scanner integration exists yet.
+  (Phase 2 foundation; Phase 4 real analyzer/process execution).** The
+  Analyzer contract, applicability vs. availability, planning, execution,
+  and result normalization — now running one real analyzer
+  (`composer-audit`) through a real `ProcessRunner`.
+- [`auditing/analyzers/composer-audit.md`](auditing/analyzers/composer-audit.md)
+  — **Implemented (Phase 4).** The first real scanner: `composer audit`,
+  its safety model, JSON schema, severity/confidence/coverage policy, and
+  known limitations.
 - [`auditing/findings-lifecycle.md`](auditing/findings-lifecycle.md) —
   **Implemented (Phase 3).** Finding identity/occurrences, fingerprinting,
-  lifecycle, and auto-resolution safety — persistent, tested, still fed
-  only by synthetic observations (no real scanner yet).
+  lifecycle, and auto-resolution safety — persistent, tested, now fed by
+  one real analyzer's observations (Phase 4) alongside synthetic ones in
+  tests.
     - [`auditing/findings.md`](auditing/findings.md) — the `Finding`/
       `FindingOccurrence` field reference.
     - [`auditing/severity.md`](auditing/severity.md)
     - [`auditing/confidence.md`](auditing/confidence.md)
     - [`auditing/suppressions.md`](auditing/suppressions.md)
+- [`development/process-execution.md`](development/process-execution.md)
+  — **Implemented (Phase 4).** The real `ProcessRunner`/`SymfonyProcessRunner`
+  safety model: argv-only, env allowlisting, timeouts, output capping.
 - [`auditing/overview.md`](auditing/overview.md) describes the still
-  **planned** rest of the pipeline (Phase 4+: real scanners, correlation,
+  **planned** rest of the pipeline (more scanners, correlation,
   Laravel-aware rules).
 
 ## Integrations

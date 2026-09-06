@@ -6,6 +6,126 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 4.1: Composer Analyzer Deployment Readiness
+
+### Fixed
+
+- **The official Docker image now ships a working `composer` binary in
+  its `runtime` stage** — a known gap left open at the end of Phase 4
+  (`ComposerAuditAnalyzer` reported `Unavailable` inside that image).
+  Reused from the `builder` stage (one pinned pull, not a second one);
+  Composer version is now pinned (`COMPOSER_VERSION=2.10.3`, comfortably
+  above `ComposerAuditAnalyzer::MIN_SUPPORTED_VERSION`'s `2.4.0` floor)
+  instead of a floating `composer:2` tag. `COMPOSER_HOME` is set to a
+  fixed, LaraDogs-controlled directory
+  (`/home/laradogs/.composer`) via a container-level `ENV` — reaching the
+  `composer` subprocess through the existing `process.env_allowlist`
+  mechanism with zero analyzer code changes. Verified with a real
+  `docker compose build` + a running (non-root, healthy) container:
+  `composer --version` works, `ComposerAuditAnalyzer::availability()`
+  reports `AVAILABLE`, and a real audit run against a **read-only-mounted**
+  fixture succeeded, returning real advisories, with Composer's cache
+  confirmed to land only under `/home/laradogs/.composer` — never inside
+  `/app` or the mounted target. See
+  [`docs/development/docker.md`](docs/development/docker.md#composer-in-the-runtime-image).
+
+### Investigated (no code change)
+
+- **Dependency/package-scoped `AnalyzerCoverage` for `composer-audit`.**
+  Researched whether Composer's audit model justifies a coverage claim
+  stronger than `Unknown` (`Full`, or a new package-scoped coverage
+  concept). Confirmed by reading the exact pinned Composer source and by
+  reproduction with the real binary: a target's own `composer.json` can
+  disable its only advisory-capable repository
+  (`"repositories": {"packagist.org": false}`) and receive a perfectly
+  clean, valid-JSON, exit-0 audit result — even against a `composer.lock`
+  locking a package version with real, known advisories. This rules out
+  `AnalyzerCoverage::full()` and any new package-level coverage primitive
+  for now: LaraDogs cannot currently verify, from `composer audit`'s
+  output alone, that any advisory-capable repository was actually
+  queried. `composer-audit` continues to always declare
+  `AnalyzerCoverage::unknown()` — Composer-sourced findings still don't
+  auto-resolve. See
+  [`docs/auditing/analyzers/composer-audit.md`](docs/auditing/analyzers/composer-audit.md#dependency-coverage-research-phase-41).
+  (Also confirmed, as good news: a project's `ignore-unreachable` policy
+  setting does **not** suppress the `unreachable-repositories` signal
+  this analyzer already fails closed on — it only controls whether
+  Composer aborts hard vs. continues past the failure.)
+
+### Added
+
+- 3 new tests: `COMPOSER_HOME` environment-allowlist forwarding, a
+  portable (non-Docker) filesystem-read-only target check, and (opt-in,
+  real-network-gated) a real `composer audit` against a real
+  filesystem-read-only target with `COMPOSER_HOME` pointed outside it,
+  asserting the target is byte-for-byte unchanged afterward.
+
+## [Unreleased] — Phase 4: Safe Process Execution + First Real Analyzer (Composer Audit)
+
+### Added
+
+- **The first real `Analyzer`, running end-to-end:**
+  `App\Audit\Analyzers\Composer\ComposerAuditAnalyzer` runs
+  `composer audit --locked --format=json --no-plugins --no-scripts`
+  against a project's locked PHP dependencies and normalizes real
+  security advisories into `FindingCandidate`s. Applicable only to a
+  Composer project with a `composer.lock`; available only when a
+  `composer` binary >= 2.4 resolves from LaraDogs' own config/PATH (never
+  the target). Never runs `composer install`, never creates `vendor/`,
+  never executes the target's `scripts`/plugins. Advisory rule identity
+  is `{package_name}:{advisoryId}` (stable, deterministic); severity maps
+  Composer's own (frequently null) `severity` field, with a new
+  `Severity::Unknown` case for when it's absent; confidence is always
+  `High` (reflects match confidence, not real-world impact); coverage is
+  always declared `Unknown` (Composer has no "rules executed" universe to
+  declare `Explicit`/`Full` from — a documented limitation, not a gap:
+  Composer findings don't auto-resolve yet). Abandoned packages are
+  reported as an informational diagnostic, never a `Finding`. Malformed/
+  truncated JSON, a timeout, and unreachable advisory repositories all
+  fail closed — never a false-clean scan. See
+  [`docs/auditing/analyzers/composer-audit.md`](docs/auditing/analyzers/composer-audit.md).
+- **The first real `ProcessRunner`:** `SymfonyProcessRunner`
+  (`app/Audit/Engine/Process/`), built on Symfony Process (already a
+  transitive dependency — no new package added). Argv-only (no shell
+  string exists to inject into), a true environment allowlist (verified
+  against Symfony's exact source — a naive `setEnv()` call alone would
+  still leak the full parent environment), real timeout enforcement,
+  output capping via a streaming callback with truncation reporting, and
+  a `ProcessResult::processStartFailed()` distinguishing "never started"
+  from any real exit code. See
+  [`docs/development/process-execution.md`](docs/development/process-execution.md)
+  and [ADR-0011](docs/architecture/decisions/ADR-0011-safe-external-process-execution.md).
+- `App\Audit\Findings\Ingestion\ProducesFindingCandidates` and
+  `App\Audit\Findings\Ingestion\ScanRunner` — the minimal orchestration
+  seam connecting a real analyzer to Finding persistence without
+  `App\Audit\Engine` ever depending on `App\Audit\Findings`.
+- `Severity::Unknown` — a real domain need (a real advisory can carry no
+  severity from its source), not an aesthetic addition.
+- `php artisan laradogs:audit {path} [--json] [--analyzer=composer-audit]`
+  — prints one real `AuditRunResult`; deliberately does not persist a
+  `Scan` (see the analyzer doc for why).
+- `config/laradogs.php` gained `process.*` (timeout, max output bytes,
+  env allowlist) and `composer.*` (binary override, timeout) sections.
+- 45 new tests (206 total; 205 passing + 1 opt-in real-network test
+  skipped by default): the real `ProcessRunner` against controlled PHP
+  fixture scripts (including a literal shell-metacharacter argv-injection
+  proof), a dedicated `ComposerAuditParser` test suite against synthetic
+  Composer JSON fixtures, `ComposerAuditAnalyzer` tests against a fake
+  `ProcessRunner`, one full end-to-end pipeline test, a static
+  dependency-direction guard, and an extension of the existing
+  no-shell-execution guard to cover the new `app/Audit/Analyzers/`
+  namespace.
+
+### Known limitations
+
+- Composer-sourced findings never auto-resolve yet (coverage is always
+  `Unknown` — see the analyzer doc's rationale).
+- The `composer` binary is not present in the Docker `runtime` image
+  today (only the discarded `builder` stage has it) — documented in
+  `docs/development/docker.md`, not fixed this phase (no Docker
+  redesign).
+- Abandoned packages are diagnostic-only, never a `Finding`.
+
 ## [Unreleased] — Phase 3.1: Safe Finding Resolution Coverage
 
 ### Fixed

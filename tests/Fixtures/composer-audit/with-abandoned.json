@@ -1,0 +1,8 @@
+{
+    "advisories": [],
+    "abandoned": {
+        "vendor/abandoned-with-replacement": "vendor/new-package",
+        "vendor/abandoned-no-replacement": null
+    },
+    "filter": null
+}

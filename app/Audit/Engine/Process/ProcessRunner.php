@@ -3,14 +3,13 @@
 namespace App\Audit\Engine\Process;
 
 /**
- * The future boundary between the Audit Engine and real external tool
- * execution (Phase 4+, once a real analyzer needs to shell out to
- * `composer audit`, PHPStan, Semgrep, etc.). No implementation of this
- * interface exists yet, and nothing in Phase 2 constructs or calls one —
- * it is recorded here purely as a contract, so that boundary exists in
- * code (not just in documentation) before the first real analyzer is
- * written, and so `Analyzer` implementations are written against it from
- * day one instead of reaching for `exec()`/`shell_exec()` directly.
+ * The boundary between the Audit Engine and real external tool execution
+ * — this contract was recorded in Phase 2, before any real analyzer
+ * needed it, so `Analyzer` implementations are written against it from
+ * day one instead of reaching for `exec()`/`shell_exec()` directly. Its
+ * first real implementation, `SymfonyProcessRunner`, and first real
+ * caller, `App\Audit\Analyzers\Composer\ComposerAuditAnalyzer`, arrive in
+ * Phase 4.
  *
  * A conforming implementation must, at minimum:
  * - never build a shell string (enforced by {@see ProcessCommand} having
@@ -19,10 +18,13 @@ namespace App\Audit\Engine\Process;
  * - pass only the given, explicit environment (no inherited secrets);
  * - enforce the given timeout and report it via `ProcessResult::$timedOut`
  *   rather than leaving the process running;
- * - cap captured stdout/stderr rather than buffering unboundedly.
+ * - cap captured stdout/stderr rather than buffering unboundedly, and
+ *   report truncation via `ProcessResult::$outputTruncated`;
+ * - distinguish a process that never started from any real exit code via
+ *   `ProcessResult::processStartFailed()`.
  *
- * See docs/auditing/audit-engine.md's security boundary section for the
- * full reasoning, and ADR-0009 for the decision this contract records.
+ * See docs/development/process-execution.md for the full reasoning and
+ * ADR-0011 for the decision this contract and its implementation record.
  */
 interface ProcessRunner
 {

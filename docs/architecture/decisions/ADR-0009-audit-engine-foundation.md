@@ -4,6 +4,13 @@
 
 Accepted (Phase 2).
 
+**Note (Phase 4):** The `ProcessRunner` contract recorded below got its
+first real implementation (`SymfonyProcessRunner`) and first real caller
+(`ComposerAuditAnalyzer`) — see
+[ADR-0011](ADR-0011-safe-external-process-execution.md), which owns the
+implementation-level decisions (environment allowlisting, timeout/output
+capping, process-start-failure semantics) this ADR only anticipated.
+
 **Note (Phase 3.1):** `AnalyzerResult` gained an `AnalyzerCoverage` field
 (`App\Audit\Engine\Execution\AnalyzerCoverage`/`CoverageMode`) — an
 analyzer's own declaration of what its execution actually verified,

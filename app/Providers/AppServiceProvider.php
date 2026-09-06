@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Audit\Analyzers\Composer\ComposerAuditAnalyzer;
+use App\Audit\Engine\Process\ProcessRunner;
+use App\Audit\Engine\Process\SymfonyProcessRunner;
+use App\Audit\Engine\Registry\AnalyzerRegistry;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +19,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(ProcessRunner::class, SymfonyProcessRunner::class);
+
+        $this->app->singleton(AnalyzerRegistry::class, function (): AnalyzerRegistry {
+            $registry = new AnalyzerRegistry;
+            $registry->register($this->app->make(ComposerAuditAnalyzer::class));
+
+            return $registry;
+        });
     }
 
     /**

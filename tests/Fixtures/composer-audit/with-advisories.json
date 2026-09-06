@@ -1,0 +1,37 @@
+{
+    "advisories": {
+        "vendor/vulnerable-package": [
+            {
+                "advisoryId": "PKSA-abcd-1234-efgh",
+                "packageName": "vendor/vulnerable-package",
+                "affectedVersions": "<1.2.3",
+                "title": "Deserialization of Untrusted Data in vendor/vulnerable-package",
+                "cve": "CVE-2025-00001",
+                "link": "https://packagist.org/advisories/PKSA-abcd-1234-efgh",
+                "severity": "high",
+                "reportedAt": "2025-01-15T10:00:00+00:00",
+                "sources": [
+                    {
+                        "name": "GitHub",
+                        "remoteId": "GHSA-xxxx-yyyy-zzzz"
+                    }
+                ]
+            }
+        ],
+        "vendor/no-severity-package": [
+            {
+                "advisoryId": "PKSA-null-sev-0001",
+                "packageName": "vendor/no-severity-package",
+                "affectedVersions": ">=2.0,<2.4",
+                "title": "Unspecified security issue in vendor/no-severity-package",
+                "cve": null,
+                "link": null,
+                "severity": null,
+                "reportedAt": "2025-03-01T00:00:00+00:00",
+                "sources": []
+            }
+        ]
+    },
+    "abandoned": [],
+    "filter": null
+}

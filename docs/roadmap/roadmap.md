@@ -2,22 +2,22 @@
 
 ## Phases
 
-| Phase | Name                                    | Status                    |
-| ----- | --------------------------------------- | ------------------------- |
-| 0     | Discovery / Architecture / Bootstrap    | **Complete**              |
-| 1     | Project Discovery (stack detection)     | **Complete**              |
-| 2     | Audit Engine Foundation                 | **Complete**              |
-| 3     | Finding Domain + Persistence            | **Complete** (this phase) |
-| 4     | Security / Dependency Scanners          | Not started               |
-| 5     | Bug / Quality Analysis                  | Not started               |
-| 6     | Performance Analysis                    | Not started               |
-| 7     | Dashboard                               | Not started               |
-| 8     | History / Comparison / Quality Gates    | Not started               |
-| 9     | MCP                                     | Not started               |
-| 10    | Authentication / MCP Credentials        | Not started               |
-| 11    | Git Integration / Continuous Monitoring | Not started               |
-| 12    | CI / GitHub Action                      | Not started               |
-| 13    | Hardening / Release                     | Not started               |
+| Phase | Name                                    | Status                                                              |
+| ----- | --------------------------------------- | ------------------------------------------------------------------- |
+| 0     | Discovery / Architecture / Bootstrap    | **Complete**                                                        |
+| 1     | Project Discovery (stack detection)     | **Complete**                                                        |
+| 2     | Audit Engine Foundation                 | **Complete**                                                        |
+| 3     | Finding Domain + Persistence            | **Complete**                                                        |
+| 4     | Security / Dependency Scanners          | **In progress** (`composer audit` done; other scanners not started) |
+| 5     | Bug / Quality Analysis                  | Not started                                                         |
+| 6     | Performance Analysis                    | Not started                                                         |
+| 7     | Dashboard                               | Not started                                                         |
+| 8     | History / Comparison / Quality Gates    | Not started                                                         |
+| 9     | MCP                                     | Not started                                                         |
+| 10    | Authentication / MCP Credentials        | Not started                                                         |
+| 11    | Git Integration / Continuous Monitoring | Not started                                                         |
+| 12    | CI / GitHub Action                      | Not started                                                         |
+| 13    | Hardening / Release                     | Not started                                                         |
 
 No changes were made to this phase list during Phase 0 — the brief's
 ordering (foundation → discovery → engine → domain model → scanners →
@@ -85,6 +85,42 @@ candidates only, plus
 No real scanner integration, no dashboard, no MCP server — see the Phase
 3 report for the full account.
 
+## What Phase 4 actually delivered
+
+The first real analyzer, end to end (`app/Audit/Analyzers/Composer/`,
+alongside the first real `App\Audit\Engine\Process\ProcessRunner`
+implementation, `SymfonyProcessRunner`): `ComposerAuditAnalyzer` runs
+`composer audit --locked --format=json --no-plugins --no-scripts` against
+a project's locked dependencies via a real, argv-only, env-allowlisted,
+output-capped, timeout-enforced subprocess boundary — never mutating the
+target, never running its plugins/scripts, never trusting its own
+`composer` binary claim. A dedicated `ComposerAuditParser` normalizes
+Composer's real JSON schema (verified against the `composer/composer`
+source, not assumed) into advisories/abandoned-packages/
+unreachable-repositories, failing closed (never a false-clean scan) on
+malformed/truncated output or an unreachable advisory database. Advisory
+rule identity is `package_name:advisoryId` (stable, deterministic);
+`Severity::Unknown` was added for advisories the source itself doesn't
+rate; coverage is always declared `Unknown` (Composer has no "rules
+executed" universe to declare `Explicit`/`Full` from — documented
+limitation, not a gap: Composer findings don't auto-resolve yet). A new
+`ProducesFindingCandidates` interface (in `Findings\Ingestion`, not
+Engine) and `ScanRunner` orchestrator connect a real analyzer to Phase 3's
+existing persistence without Engine ever depending on Findings. A
+`laradogs:audit {path}` CLI prints one real audit run (no persistence).
+45 new tests (206 total; 205 passing + 1 opt-in real-network test skipped
+by default) — synthetic PHP-script fixtures for the real `ProcessRunner`
+(including a literal shell-metacharacter argv-injection proof), synthetic
+Composer JSON fixtures for the parser/analyzer, and one full end-to-end
+pipeline test — plus
+[`analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md),
+[`../development/process-execution.md`](../development/process-execution.md),
+and [ADR-0011](../architecture/decisions/ADR-0011-safe-external-process-execution.md).
+No other scanner (`npm audit`, Semgrep, OSV-Scanner, Trivy, PHPStan/
+ESLint/Pest-against-target), no dashboard, no MCP server, no Git
+monitoring, no GitHub Action, no correlation across scanners, no
+Laravel-aware rules — see the Phase 4 report for the full account.
+
 ## Deferred items (noticed during Phase 0, intentionally not built)
 
 These are candidate improvements or gaps spotted while bootstrapping.
@@ -102,8 +138,11 @@ creep" instruction for this phase.
   profile — SQLite, MySQL, MariaDB, or PostgreSQL — is independent of it;
   see [ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md).
 - **Scanner sandboxing implementation** (containers-per-run vs. restricted
-  subprocess). Constraint recorded in ADR-0004; concrete mechanism is a
-  Phase 4 decision, not a Phase 0 one.
+  subprocess). Constraint recorded in ADR-0004; Phase 4 resolved this for
+  the process-boundary level (argv-only, env-allowlisted, output-capped
+  subprocess — [ADR-0011](../architecture/decisions/ADR-0011-safe-external-process-execution.md))
+  without introducing containers-per-run; revisit if a future scanner
+  needs stronger isolation than a controlled subprocess provides.
 - **Dashboard visual identity.** The starter kit's default branding/welcome
   page was left untouched — reskinning is a Phase 7 concern, not a Phase 0
   one.

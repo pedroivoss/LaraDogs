@@ -2,25 +2,27 @@
 
 This describes what exists in the repository today — the Laravel starter
 kit foundation from Phase 0, Project Discovery (Phase 1), the Audit
-Engine foundation (Phase 2), and the Finding domain/lifecycle (Phase 3) —
-not the full target audit architecture. See [`overview.md`](overview.md)
-for that.
+Engine foundation (Phase 2), the Finding domain/lifecycle (Phase 3), and
+the first real analyzer/process-execution implementation (Phase 4) — not
+the full target audit architecture. See [`overview.md`](overview.md) for
+that.
 
 ## Backend (`app/`)
 
-| Path                             | Purpose                                                                                                                |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `app/Actions/Fortify/`           | Fortify action classes (user creation, password validation/reset) — starter-kit auth, not LaraDogs-specific.           |
-| `app/Audit/Discovery/`           | **Project Discovery Core** (Phase 1) — see below.                                                                      |
-| `app/Audit/Engine/`              | **Audit Engine foundation** (Phase 2) — see below.                                                                     |
-| `app/Audit/Findings/`            | **Finding domain services** (Phase 3) — see below.                                                                     |
-| `app/Http/Controllers/`          | Inertia page controllers and Fortify-adjacent controllers.                                                             |
-| `app/Http/Controllers/Settings/` | User settings pages (profile, password, appearance, two-factor, passkeys).                                             |
-| `app/Http/Middleware/`           | `HandleAppearance` (theme cookie) and `HandleInertiaRequests` (shared Inertia props).                                  |
-| `app/Http/Requests/`             | Form request validation classes.                                                                                       |
-| `app/Models/`                    | `User` (starter-kit); `Audit/` — persistence models (Phase 3) — see below.                                             |
-| `app/Providers/`                 | `AppServiceProvider`, Fortify service provider bindings.                                                               |
-| `app/Console/Commands/`          | `InspectProjectCommand` (`laradogs:inspect`) — thin CLI adapter over Project Discovery, no detection logic of its own. |
+| Path                             | Purpose                                                                                                                                                               |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/Actions/Fortify/`           | Fortify action classes (user creation, password validation/reset) — starter-kit auth, not LaraDogs-specific.                                                          |
+| `app/Audit/Discovery/`           | **Project Discovery Core** (Phase 1) — see below.                                                                                                                     |
+| `app/Audit/Engine/`              | **Audit Engine foundation** (Phase 2), now with a real `ProcessRunner` (Phase 4) — see below.                                                                         |
+| `app/Audit/Findings/`            | **Finding domain services** (Phase 3), now with `ScanRunner`/`ProducesFindingCandidates` (Phase 4) — see below.                                                       |
+| `app/Audit/Analyzers/`           | **Real analyzer implementations** (Phase 4) — the outer namespace depending on both Engine and Findings — see below.                                                  |
+| `app/Http/Controllers/`          | Inertia page controllers and Fortify-adjacent controllers.                                                                                                            |
+| `app/Http/Controllers/Settings/` | User settings pages (profile, password, appearance, two-factor, passkeys).                                                                                            |
+| `app/Http/Middleware/`           | `HandleAppearance` (theme cookie) and `HandleInertiaRequests` (shared Inertia props).                                                                                 |
+| `app/Http/Requests/`             | Form request validation classes.                                                                                                                                      |
+| `app/Models/`                    | `User` (starter-kit); `Audit/` — persistence models (Phase 3) — see below.                                                                                            |
+| `app/Providers/`                 | `AppServiceProvider` — Fortify bindings, plus (Phase 4) `ProcessRunner` → `SymfonyProcessRunner` and a singleton `AnalyzerRegistry` with `composer-audit` registered. |
+| `app/Console/Commands/`          | `InspectProjectCommand` (`laradogs:inspect`, Phase 1); `AuditCommand` (`laradogs:audit`, Phase 4) — thin CLI adapters, no detection/analyzer logic of their own.      |
 
 ### Project Discovery (`app/Audit/Discovery/`)
 
@@ -47,12 +49,15 @@ separate concern, implemented under `app/Audit/Findings/`/
 
 ### Audit Engine (`app/Audit/Engine/`)
 
-Orchestration foundation between a `ProjectProfile` and real scanner
-integrations (Phase 4+) — no real analyzer exists yet, only the contract
-and synthetic ones for testing. Full detail, lifecycle, and security
-boundary: [`../auditing/audit-engine.md`](../auditing/audit-engine.md);
-the decision behind the Analyzer contract and process-execution boundary:
-[ADR-0009](decisions/ADR-0009-audit-engine-foundation.md).
+Orchestration between a `ProjectProfile` and real scanner integrations.
+As of Phase 4, `Process/` has a real implementation
+(`SymfonyProcessRunner`) and one real analyzer is registered in
+production (`App\Audit\Analyzers\Composer\ComposerAuditAnalyzer`). Full
+detail, lifecycle, and security boundary:
+[`../auditing/audit-engine.md`](../auditing/audit-engine.md); the decision
+behind the Analyzer contract: [ADR-0009](decisions/ADR-0009-audit-engine-foundation.md);
+the decision behind process execution:
+[ADR-0011](decisions/ADR-0011-safe-external-process-execution.md).
 
 | Path               | Purpose                                                                                                                                                                                                                                     |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -62,10 +67,12 @@ the decision behind the Analyzer contract and process-execution boundary:
 | `Registry/`        | `AnalyzerRegistry` (explicit registration, duplicate-id guard, deterministic order), `DuplicateAnalyzerIdException`.                                                                                                                        |
 | `Plan/`            | `AuditPlan`, `AuditPlanItem` — inspectable, JSON-safe, built without executing anything.                                                                                                                                                    |
 | `Execution/`       | `ExecutionStatus`, `AnalyzerResult`, `AnalyzerDiagnostic`/`DiagnosticLevel`, `AnalyzerCoverage`/`CoverageMode` (Phase 3.1 — what an analyzer declares it actually verified, separate from `status`), `AnalyzerExecution`, `AuditRunResult`. |
-| `Process/`         | `ProcessRunner` (interface, no implementation), `ProcessCommand`, `ProcessResult` — the future real-process-execution boundary (Phase 4+).                                                                                                  |
+| `Process/`         | `ProcessRunner` (interface), `ProcessCommand`, `ProcessResult`, `SymfonyProcessRunner` (Phase 4 — the real, argv-only, env-allowlisted, output-capped implementation).                                                                      |
 
-No real `Analyzer` is registered anywhere in production; synthetic ones
-for exercising the engine live under `tests/Support/Engine/Analyzers/`.
+`ComposerAuditAnalyzer` (`app/Audit/Analyzers/Composer/`) is the one real
+`Analyzer` registered in production (see
+`App\Providers\AppServiceProvider`); synthetic ones for exercising the
+engine itself still live under `tests/Support/Engine/Analyzers/`.
 
 ### Findings (`app/Audit/Findings/`, `app/Models/Audit/`)
 
@@ -77,25 +84,44 @@ auto-resolution safety:
 the decision behind identity/fingerprinting/lifecycle:
 [ADR-0010](decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md).
 
-| Path                                                                                              | Purpose                                                                                                                   |
-| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `app/Models/Audit/Project.php`                                                                    | Something auditable registered with LaraDogs.                                                                             |
-| `app/Models/Audit/Scan.php`                                                                       | One immutable audit run — `ProjectProfile` snapshot, status, timing.                                                      |
-| `app/Models/Audit/ScanAnalyzerExecution.php`                                                      | Persisted `AnalyzerExecution` (Phase 2) per scan, including declared `coverage` — what auto-resolution safety depends on. |
-| `app/Models/Audit/Casts/AsAnalyzerCoverage.php`                                                   | Eloquent cast: `AnalyzerCoverage` (Phase 2) &lt;-&gt; JSON, defaulting to `Unknown` on anything unparseable.              |
-| `app/Models/Audit/Finding.php`                                                                    | The stable, cross-scan logical identity of an issue.                                                                      |
-| `app/Models/Audit/FindingOccurrence.php`                                                          | Evidence observed for a Finding in one specific scan.                                                                     |
-| `app/Models/Audit/FindingStatusHistory.php`                                                       | Append-only lifecycle transition audit trail.                                                                             |
-| `Findings/FindingCandidate.php`                                                                   | The scanner-agnostic "an analyzer observed this" DTO — the seam a real Phase 4+ analyzer targets.                         |
-| `Findings/Severity.php`, `Confidence.php`, `FindingStatus.php`, `ScanStatus.php`, `ActorType.php` | Domain enums.                                                                                                             |
-| `Findings/Fingerprint/Fingerprinter.php`                                                          | Versioned (`v1`), line-number-independent identity computation.                                                           |
-| `Findings/Redaction/EvidenceRedactor.php`                                                         | Defense-in-depth secret masking for persisted evidence.                                                                   |
-| `Findings/Lifecycle/FindingLifecycleService.php`                                                  | The only code path allowed to change a Finding's status.                                                                  |
-| `Findings/Ingestion/FindingIngestor.php`, `FindingReconciler.php`, `ScanRecorder.php`             | Find-or-create + occurrence recording, safe auto-resolution sweep, and the Phase 1+2+3 tie-together.                      |
+| Path                                                                                              | Purpose                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app/Models/Audit/Project.php`                                                                    | Something auditable registered with LaraDogs.                                                                                                                                  |
+| `app/Models/Audit/Scan.php`                                                                       | One immutable audit run — `ProjectProfile` snapshot, status, timing.                                                                                                           |
+| `app/Models/Audit/ScanAnalyzerExecution.php`                                                      | Persisted `AnalyzerExecution` (Phase 2) per scan, including declared `coverage` — what auto-resolution safety depends on.                                                      |
+| `app/Models/Audit/Casts/AsAnalyzerCoverage.php`                                                   | Eloquent cast: `AnalyzerCoverage` (Phase 2) &lt;-&gt; JSON, defaulting to `Unknown` on anything unparseable.                                                                   |
+| `app/Models/Audit/Finding.php`                                                                    | The stable, cross-scan logical identity of an issue.                                                                                                                           |
+| `app/Models/Audit/FindingOccurrence.php`                                                          | Evidence observed for a Finding in one specific scan.                                                                                                                          |
+| `app/Models/Audit/FindingStatusHistory.php`                                                       | Append-only lifecycle transition audit trail.                                                                                                                                  |
+| `Findings/FindingCandidate.php`                                                                   | The scanner-agnostic "an analyzer observed this" DTO — the seam a real Phase 4+ analyzer targets.                                                                              |
+| `Findings/Severity.php`, `Confidence.php`, `FindingStatus.php`, `ScanStatus.php`, `ActorType.php` | Domain enums.                                                                                                                                                                  |
+| `Findings/Fingerprint/Fingerprinter.php`                                                          | Versioned (`v1`), line-number-independent identity computation.                                                                                                                |
+| `Findings/Redaction/EvidenceRedactor.php`                                                         | Defense-in-depth secret masking for persisted evidence.                                                                                                                        |
+| `Findings/Lifecycle/FindingLifecycleService.php`                                                  | The only code path allowed to change a Finding's status.                                                                                                                       |
+| `Findings/Ingestion/FindingIngestor.php`, `FindingReconciler.php`, `ScanRecorder.php`             | Find-or-create + occurrence recording, safe auto-resolution sweep, and the Phase 1+2+3 tie-together.                                                                           |
+| `Findings/Ingestion/ProducesFindingCandidates.php`                                                | Phase 4 — implemented by a concrete outer-layer analyzer to normalize its own `AnalyzerResult` into `FindingCandidate`s, without `Analyzer`/Engine ever depending on Findings. |
+| `Findings/Ingestion/ScanRunner.php`                                                               | Phase 4 — the orchestration seam: runs a real `AuditEngine`, then normalizes every `ProducesFindingCandidates` analyzer's result and hands it to `ScanRecorder`.               |
 
-No real scanner produces a `FindingCandidate` yet — that's Phase 4.
-`config/laradogs.php` holds a placeholder `version` string recorded on
-every scan (no release/tagging scheme exists yet).
+`ComposerAuditAnalyzer` (Phase 4) is the first real producer of a
+`FindingCandidate`. `config/laradogs.php` holds a placeholder `version`
+string recorded on every scan (no release/tagging scheme exists yet),
+plus (Phase 4) `process.*`/`composer.*` settings — see
+[`analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md).
+
+### Analyzers (`app/Audit/Analyzers/`)
+
+The outer namespace for concrete, real analyzers — the only place in the
+codebase allowed to depend on BOTH `App\Audit\Engine` and
+`App\Audit\Findings` at once (see
+[ADR-0011](decisions/ADR-0011-safe-external-process-execution.md) and
+[`../auditing/analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md)).
+
+| Path                                                       | Purpose                                                                                                                    |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `Composer/ComposerAuditAnalyzer.php`                       | Implements both `Analyzer` and `ProducesFindingCandidates`; runs `composer audit --locked --no-plugins --no-scripts`.      |
+| `Composer/ComposerBinaryResolver.php`                      | Resolves the `composer` executable from LaraDogs' own config/PATH only — never from the target.                            |
+| `Composer/ComposerAuditParser.php`                         | Dedicated, defensive JSON parser for `composer audit --format=json` — kept separate from `ProcessRunner` and the analyzer. |
+| `Composer/ComposerAdvisory.php`, `ComposerAuditReport.php` | Parsed-report value objects.                                                                                               |
 
 ## Frontend (`resources/js/`)
 
@@ -147,24 +173,32 @@ Phase 7.
 
 ## Testing
 
-- Pest, under `tests/Feature` and `tests/Unit`. Starter-kit auth flows —
-  39 tests from Phase 0 — Project Discovery
-  (`tests/Unit/Audit/Discovery/`, `tests/Feature/Console/`) — 26 tests
-  from Phase 1 — the Audit Engine (`tests/Unit/Audit/Engine/`,
-  `tests/Feature/Audit/Engine/`) — 38 tests from Phase 2/3.1 (including
-  `AnalyzerCoverage`) — and the Finding domain
-  (`tests/Unit/Audit/Findings/`, `tests/Feature/Audit/Findings/`) — 58
-  tests from Phase 3/3.1, covering ingestion, fingerprinting, lifecycle,
-  coverage-gated auto-resolution safety, and the create/create
-  concurrency guarantee. 161 tests total, all passing. See
-  [`../development/testing.md`](../development/testing.md).
+- Pest, under `tests/Feature` and `tests/Unit`. Starter-kit auth flows,
+  Project Discovery (Phase 1), the Audit Engine (Phase 2/3.1), and the
+  Finding domain (Phase 3/3.1) together account for 161 tests; Phase 4
+  adds real `ProcessRunner` tests, `ComposerAuditParser`/
+  `ComposerAuditAnalyzer` tests (using a fake `ProcessRunner`), and a full
+  end-to-end pipeline test — 206 tests total (205 passing + 1 opt-in,
+  network-dependent test skipped by default), all passing. See
+  [`../development/testing.md`](../development/testing.md) and
+  [`../development/process-execution.md`](../development/process-execution.md).
 - `tests/Support/Engine/Analyzers/` — synthetic `Analyzer` implementations
   (never autoloaded in production) used only by the Audit Engine's tests.
 - `tests/Support/Findings/SyntheticCandidates.php` — synthetic
   `FindingCandidate`s (SQL injection, N+1, vulnerable dependency, config
-  issue) used only by the Finding domain's tests — no real scanner exists.
+  issue) used by the Finding domain's own tests.
+- `tests/Support/Process/FakeProcessRunner.php` (Phase 4) — a scripted
+  `ProcessRunner` test double; never spawns a real process.
 - `tests/Fixtures/discovery/` — small, synthetic project fixtures (never
-  real projects) used only by Discovery's tests.
+  real projects) used by Discovery's and (Phase 4) the Composer
+  analyzer's tests.
+- `tests/Fixtures/process/` (Phase 4) — small PHP scripts (echo-args,
+  sleep, exit-code, stdout/stderr, huge-output), run via `PHP_BINARY`,
+  used only to test the real `ProcessRunner` — never anything from a
+  target project.
+- `tests/Fixtures/composer-audit/` (Phase 4) — synthetic
+  `composer audit --format=json` JSON fixtures (clean, with advisories,
+  with abandoned packages, unreachable repositories, malformed, truncated).
 
 ## Tooling already wired by the starter kit
 

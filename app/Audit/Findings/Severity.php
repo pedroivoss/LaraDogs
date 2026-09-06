@@ -14,4 +14,14 @@ enum Severity: string
     case Medium = 'medium';
     case Low = 'low';
     case Info = 'info';
+
+    /**
+     * The source itself did not report a severity for a real finding — e.g.
+     * a Composer security advisory whose upstream `severity` field is
+     * `null`. Distinct from {@see Info}, which means "not a problem"; this
+     * means "is a problem, magnitude not stated by the source." Never
+     * assigned by LaraDogs guessing a severity — only when the underlying
+     * data genuinely has none. See docs/auditing/severity.md.
+     */
+    case Unknown = 'unknown';
 }

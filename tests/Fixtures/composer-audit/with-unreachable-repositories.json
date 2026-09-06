@@ -1,0 +1,8 @@
+{
+    "advisories": [],
+    "abandoned": [],
+    "unreachable-repositories": [
+        "https://packagist.org"
+    ],
+    "filter": null
+}

@@ -2,34 +2,38 @@
 
 **Status: Partially implemented.** Step 1 (stack detection) is implemented
 — see [`project-discovery.md`](project-discovery.md). Step 2 (analyzer
-selection) is implemented as an orchestration _foundation_ only — see
-[`audit-engine.md`](audit-engine.md) — with no real analyzer registered
-yet. Step 4's normalized shape (`FindingCandidate`) and step 7's
-persistence/lifecycle are also implemented — see
-[`findings-lifecycle.md`](findings-lifecycle.md) — but nothing produces a
-`FindingCandidate` from real scanner output yet, so no real `Finding` is
-ever created outside tests. Steps 3, 5, 6, and 8 remain planned, agreed
-during Phase 0/3 so Phase 4+ has a shared target instead of each
-improvising the shape independently.
+selection) is implemented, with one real analyzer registered
+(`composer-audit`, Phase 4) — see [`audit-engine.md`](audit-engine.md).
+Step 3 (isolated execution) is implemented for that one analyzer via a
+real `ProcessRunner` — see
+[`../development/process-execution.md`](../development/process-execution.md).
+Step 4's normalized shape (`FindingCandidate`) and step 7's
+persistence/lifecycle are implemented, and now have a real producer — see
+[`findings-lifecycle.md`](findings-lifecycle.md) and
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md). Steps 5, 6,
+and 8 remain planned, agreed during Phase 0/3 so later phases have a
+shared target instead of each improvising the shape independently.
 
 ## What an audit will do (once fully built)
 
 1. **Detect the target project's stack** (Laravel version, Blade/Livewire/
    Inertia/React/Vue presence, Composer/NPM/Docker/CI configuration) — see
    [`project-discovery.md`](project-discovery.md).
-2. **Select applicable scanners** (`composer audit`, `npm audit`, PHPStan/
-   Larastan, ESLint, Semgrep, OSV-Scanner, Trivy, Pest/PHPUnit, ...) —
-   only tools actually installed/usable, degrading gracefully otherwise —
-   see [`audit-engine.md`](audit-engine.md) for the applicability/
-   availability distinction and planning mechanics (foundation
-   implemented; no real scanner registered yet).
-3. Execute each scanner in isolation (timeout, resource limits, non-root —
-   see [ADR-0004](../architecture/decisions/ADR-0004-scanner-execution-strategy.md)
-   and [ADR-0009](../architecture/decisions/ADR-0009-audit-engine-foundation.md)
-   for the `ProcessRunner` contract this will run through).
+2. **Select applicable scanners** (`composer audit` — implemented, Phase 4
+   — `npm audit`, PHPStan/Larastan, ESLint, Semgrep, OSV-Scanner, Trivy,
+   Pest/PHPUnit, ...) — only tools actually installed/usable, degrading
+   gracefully otherwise — see [`audit-engine.md`](audit-engine.md) for the
+   applicability/availability distinction and planning mechanics.
+3. Execute each scanner in isolation (timeout, resource limits, controlled
+   environment — see
+   [ADR-0011](../architecture/decisions/ADR-0011-safe-external-process-execution.md)
+   for the real `ProcessRunner` implementation this runs through, and
+   [ADR-0004](../architecture/decisions/ADR-0004-scanner-execution-strategy.md)/
+   [ADR-0009](../architecture/decisions/ADR-0009-audit-engine-foundation.md)
+   for the earlier design decisions it builds on).
 4. **Normalize** each scanner's raw output into a
-   [`FindingCandidate`](findings-lifecycle.md#ingestion) — implemented
-   shape; Phase 4 supplies the first real producer of one.
+   [`FindingCandidate`](findings-lifecycle.md#ingestion) — implemented,
+   with `composer-audit` (Phase 4) as the first real producer.
 5. Correlate and deduplicate findings that describe the same underlying
    issue across multiple scanners.
 6. Apply Laravel-aware rules layered on top of generic scanner output

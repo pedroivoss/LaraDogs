@@ -155,6 +155,27 @@ under an unchanged version) changes everything. Coverage lives on
 analyzer's own execution, not of the Finding domain, so any future
 consumer besides reconciliation can read it the same way.
 
+### Dependency/package coverage is a different question (Phase 4.1 research)
+
+`AnalyzerCoverage`'s `Explicit`/`Full` modes were designed around a
+**rule-based** analyzer (a static-analysis ruleset that either did or
+didn't execute a given rule this run). A **dependency-advisory**
+analyzer like `composer-audit` doesn't have "rules" in that sense — it
+re-checks locked packages against whatever an external advisory database
+currently knows, and only reports what currently matches. Phase 4.1
+researched, deliberately, whether this warrants a NEW coverage concept
+(e.g. package-level rather than rule-level) instead of reusing
+`Explicit`/`Full` as-is — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md#dependency-coverage-research-phase-41)
+for the full investigation. Conclusion: **not yet** — the investigation
+surfaced a more fundamental problem than a naming/modeling mismatch (a
+target project's own `composer.json` can make an advisory source
+disappear from the audit entirely, with no error and no signal in the
+JSON output), so `composer-audit` continues to always declare
+`AnalyzerCoverage::unknown()` rather than inventing a new coverage
+primitive on top of a verification guarantee that doesn't actually exist
+yet.
+
 ### Auto-resolution safety
 
 **The single most important safety rule in this domain.** A finding may

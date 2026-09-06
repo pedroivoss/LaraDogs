@@ -1,15 +1,18 @@
 # Auditing: Overview
 
-**Status: Planned.** Nothing under `docs/auditing/` describes code that
-exists in this repository yet. It records the target domain model agreed
-during Phase 0 so that Phase 2 (Audit Engine Foundation) and Phase 3
-(Finding Domain + Persistence) have a shared target instead of each
-improvising the shape independently.
+**Status: Partially implemented.** Step 1 below (stack detection) is
+implemented — see [`project-discovery.md`](project-discovery.md). Steps
+2-8 record the target domain model agreed during Phase 0 so that Phase 2
+(Audit Engine Foundation) and Phase 3 (Finding Domain + Persistence) have
+a shared target instead of each improvising the shape independently; none
+of that is implemented yet. Discovery does not run scanners and does not
+produce a `Finding` — it only feeds step 2 what it needs to pick scanners.
 
-## What an audit will do (once built)
+## What an audit will do (once fully built)
 
-1. Detect the target project's stack (Laravel version, Blade/Livewire/
-   Inertia/React/Vue presence, Composer/NPM/Docker/CI configuration).
+1. **Detect the target project's stack** (Laravel version, Blade/Livewire/
+   Inertia/React/Vue presence, Composer/NPM/Docker/CI configuration) — see
+   [`project-discovery.md`](project-discovery.md).
 2. Select applicable scanners (`composer audit`, `npm audit`, PHPStan/
    Larastan, ESLint, Semgrep, OSV-Scanner, Trivy, Pest/PHPUnit, ...) —
    only tools actually installed/usable, degrading gracefully otherwise.

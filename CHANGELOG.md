@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 1: Project Discovery Engine
+
+### Added
+
+- **Project Discovery Core** (`app/Audit/Discovery/`): a static,
+  evidence-based stack detector that inspects a directory and produces a
+  normalized `ProjectProfile` — Laravel version, Blade/Livewire/Inertia/
+  React/Vue/TypeScript, testing tools (Pest/PHPUnit/Playwright/Vitest/
+  Jest/Cypress), Docker/GitHub Actions/GitLab CI presence, Redis/queue/
+  scheduler hints, and database driver hints. Never executes anything
+  from the inspected project — see
+  [`docs/auditing/project-discovery.md`](docs/auditing/project-discovery.md)
+  and [ADR-0008](docs/architecture/decisions/ADR-0008-static-project-discovery.md).
+- Every detection carries an explicit `detected`/`not_detected`/`unknown`/
+  `invalid`/`unsupported` status (`Detection`/`VersionDetection` value
+  objects) instead of a plain boolean, so "no evidence" is never confused
+  with "evidence of absence."
+- `laradogs:inspect {path} [--json]` Artisan command — thin CLI adapter
+  over Project Discovery, human-readable output by default or the full
+  `ProjectProfile` as JSON.
+- 13 synthetic project fixtures under `tests/Fixtures/discovery/`
+  (Laravel+Blade, Laravel+Livewire, Laravel+Inertia+React+TS,
+  Laravel+Inertia+Vue, Laravel API-only, plain PHP Composer, Node-only,
+  empty directory, malformed composer.json/package.json, with/without
+  composer.lock, a full-stack fixture, and a no-code-execution fixture).
+- 26 new Pest tests (`tests/Unit/Audit/Discovery/`,
+  `tests/Feature/Console/`), including a dedicated test proving
+  `composer.json`/`package.json` scripts found in an inspected project
+  are never executed.
+
+### Notes
+
+- No scanners run, no `Finding`/`Scan` model, no persistence, no MCP
+  server, no dashboard — this is stack detection only, not auditing. See
+  [`docs/roadmap/phases.md`](docs/roadmap/phases.md) for what's still
+  ahead.
+
 ## [Unreleased] — Phase 0.1: Persistence Strategy Correction
 
 ### Changed

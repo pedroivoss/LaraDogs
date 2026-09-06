@@ -1,0 +1,8 @@
+{
+    "name": "fixture/laravel-livewire",
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^13.0",
+        "livewire/livewire": "^3.5"
+    }
+}

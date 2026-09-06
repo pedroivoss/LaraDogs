@@ -1,0 +1,18 @@
+{
+    "packages": [
+        {
+            "name": "laravel/framework",
+            "version": "v13.4.2"
+        },
+        {
+            "name": "laravel/horizon",
+            "version": "v5.24.0"
+        }
+    ],
+    "packages-dev": [
+        {
+            "name": "pestphp/pest",
+            "version": "v3.5.0"
+        }
+    ]
+}

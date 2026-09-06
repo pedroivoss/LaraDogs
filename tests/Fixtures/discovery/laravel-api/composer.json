@@ -1,0 +1,8 @@
+{
+    "name": "fixture/laravel-api",
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^13.0",
+        "laravel/sanctum": "^4.0"
+    }
+}

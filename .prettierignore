@@ -1,0 +1,4 @@
+# Synthetic Project Discovery fixtures — some are deliberately malformed
+# (invalid JSON) to test error handling, and none of them are source code
+# meant to follow this repo's style. Never auto-format them.
+tests/Fixtures/

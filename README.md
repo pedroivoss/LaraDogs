@@ -3,10 +3,11 @@
 **Watch over your Laravel applications.** _(tagline — provisional)_
 
 **Status: Early Development.** This repository currently contains a
-bootstrapped Laravel application (Phase 0 of the roadmap below) and no
-audit-domain functionality yet. If you're looking for a working security
-scanner, this isn't one yet — see [Current Capabilities](#current-capabilities)
-for exactly what exists today.
+bootstrapped Laravel application (Phase 0) plus a static project stack
+detector (Phase 1) — no security/quality auditing functionality yet. If
+you're looking for a working security scanner, this isn't one yet — see
+[Current Capabilities](#current-capabilities) for exactly what exists
+today.
 
 ## The problem
 
@@ -94,25 +95,39 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
 
 ## Current capabilities
 
-**Implemented** (Phase 0 — bootstrap only):
+**Implemented:**
 
+- **Project stack discovery** (Phase 1) — point `laradogs:inspect` at any
+  directory and get back a normalized report of what it detects: Laravel
+  version, Blade/Livewire/Inertia/React/Vue/TypeScript, testing tools
+  (Pest/PHPUnit/Playwright/Vitest/Jest/Cypress), Docker/CI presence, and
+  database driver hints. Static evidence only — **it never executes
+  anything from the inspected project.** This is stack detection, **not
+  auditing**: no scanners run, no vulnerability is reported, no `Finding`
+  is produced. See
+  [`docs/auditing/project-discovery.md`](docs/auditing/project-discovery.md).
 - A Laravel 13 application with React + Inertia (official starter kit),
-  Fortify-based authentication, and a single authenticated dashboard page.
+  Fortify-based authentication, and a single authenticated dashboard page
+  (Phase 0).
 - Configurable SQL persistence (SQLite by default for zero-config Quick
   Start; MySQL, MariaDB, and PostgreSQL are also officially supported — see
   [Database support](#database-support)), `/up` health check, Pest test
-  suite (starter-kit coverage only).
+  suite.
 - Docker Compose for local self-hosted use (non-root runtime container,
   idempotent entrypoint).
 - The documentation and architectural decisions this README links to.
 
-**Not yet implemented** (everything that makes LaraDogs actually useful):
+**Not yet implemented** (everything that makes LaraDogs actually useful
+as a _security/quality tool_, beyond stack detection):
 
-- Stack detection, scanner orchestration, the `Finding`/`Scan` domain
-  model, any scanner integration, Laravel-aware rules, history/comparison,
-  quality gates, the real Dashboard (findings/scans/rules/reports/quality
+- Security scanning, bug detection, performance analysis, any scanner
+  integration (`composer audit`, `npm audit`, PHPStan/Larastan, ESLint,
+  Semgrep, OSV-Scanner, Trivy).
+- The `Finding`/`Scan` domain model, Laravel-aware rules, history/
+  comparison, quality gates.
+- The real Dashboard (findings/scans/rules/reports/quality
   gates/integrations/MCP access/system/updates), the MCP server, MCP
-  credentials, Git/CI monitoring.
+  credentials, Git/CI continuous monitoring.
 
 **Planned:** see [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md) for
 the full phase list.
@@ -206,9 +221,9 @@ calling agent does that, using context LaraDogs provides. See
 
 ## Roadmap
 
-Phase 0 (this bootstrap) is complete. Phases 1–13 (Project Discovery
-through Hardening/Release) are not started. Full list, current position,
-and items deliberately deferred out of Phase 0:
+Phase 0 (bootstrap) and Phase 1 (Project Discovery) are complete. Phases
+2–13 (Audit Engine Foundation through Hardening/Release) are not started.
+Full list, current position, and items deliberately deferred:
 [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
 
 ## Contributing

@@ -1,0 +1,5 @@
+{
+    "name": "fixture/malformed-composer",
+    "require": {
+        "php": "^8.3",
+    }

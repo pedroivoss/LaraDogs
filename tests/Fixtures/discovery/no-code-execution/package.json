@@ -1,0 +1,8 @@
+{
+    "name": "fixture-no-code-execution",
+    "scripts": {
+        "postinstall": "touch SHOULD_NEVER_EXIST",
+        "preinstall": "touch SHOULD_NEVER_EXIST",
+        "test": "touch SHOULD_NEVER_EXIST"
+    }
+}

@@ -1,0 +1,4 @@
+# Fixture placeholder only — never invoked by Project Discovery.
+services:
+  app:
+    build: .

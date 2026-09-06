@@ -20,14 +20,23 @@ item):
 - No secret committed to Git.
 - No Phase 1+ feature accidentally implemented.
 
-## Phase 1 — Project Discovery
+## Phase 1 — Project Discovery ✅ Complete
 
-Detect a target Laravel project's stack: Laravel version, presence of
+Detect a target project's stack — Laravel version, presence of
 Blade/Livewire/Inertia/React/Vue/TypeScript, Composer/NPM manifests,
-Docker/CI configuration, installed scanners. This is what Phase 4's
-scanner-selection step and Phase 2's engine will consume — it should be
-buildable and testable against fixture projects without needing any real
-scanner installed yet.
+testing tools, Docker/CI configuration, database driver hints — via
+static evidence only, never by executing anything from the target. See
+[`../auditing/project-discovery.md`](../auditing/project-discovery.md) and
+[ADR-0008](../architecture/decisions/ADR-0008-static-project-discovery.md).
+This is what Phase 2's engine will consume to decide which scanners apply
+to a given project.
+
+Whether a given scanner _binary_ (Semgrep, Trivy, OSV-Scanner, ...) is
+actually installed and usable on the **host running LaraDogs** — a
+different question from what the target project's manifests declare — is
+not part of this phase's `ProjectProfile`; ADR-0004 calls that out as
+scanner-availability detection, and it's addressed when Phase 4 actually
+integrates those scanners, not guessed at here.
 
 ## Phase 2 — Audit Engine Foundation
 

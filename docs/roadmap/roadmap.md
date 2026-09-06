@@ -4,8 +4,8 @@
 
 | Phase | Name                                    | Status                    |
 | ----- | --------------------------------------- | ------------------------- |
-| 0     | Discovery / Architecture / Bootstrap    | **Complete** (this phase) |
-| 1     | Project Discovery (stack detection)     | Not started               |
+| 0     | Discovery / Architecture / Bootstrap    | **Complete**              |
+| 1     | Project Discovery (stack detection)     | **Complete** (this phase) |
 | 2     | Audit Engine Foundation                 | Not started               |
 | 3     | Finding Domain + Persistence            | Not started               |
 | 4     | Security / Dependency Scanners          | Not started               |
@@ -31,6 +31,20 @@ See the Phase 0 report for the full account. In short: a working Laravel
 13 + React/Inertia application (official starter kit), SQLite, Pest,
 Docker Compose for local self-hosting, and the documentation/ADR set this
 file lives in. No audit-domain code.
+
+## What Phase 1 actually delivered
+
+The Project Discovery Core (`app/Audit/Discovery/`): a static,
+evidence-based stack detector (Laravel/Blade/Livewire/Inertia/React/Vue/
+TypeScript/testing tools/Docker/CI/database driver hints), a normalized
+`ProjectProfile` with explicit `detected`/`not_detected`/`unknown`/
+`invalid` states, a `laradogs:inspect` CLI command (human-readable and
+`--json` output), 13 synthetic fixtures, 26 tests (including a dedicated
+no-code-execution guarantee test), and
+[`project-discovery.md`](../auditing/project-discovery.md) +
+[ADR-0008](../architecture/decisions/ADR-0008-static-project-discovery.md).
+No scanners, no `Finding`/`Scan` model, no persistence — see the Phase 1
+report for the full account.
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

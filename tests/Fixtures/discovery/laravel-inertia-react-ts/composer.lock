@@ -1,0 +1,13 @@
+{
+    "packages": [
+        {
+            "name": "laravel/framework",
+            "version": "v13.4.2"
+        },
+        {
+            "name": "inertiajs/inertia-laravel",
+            "version": "v3.0.0"
+        }
+    ],
+    "packages-dev": []
+}

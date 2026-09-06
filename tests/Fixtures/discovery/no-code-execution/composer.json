@@ -1,0 +1,14 @@
+{
+    "name": "fixture/no-code-execution",
+    "require": {
+        "php": "^8.3"
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "touch SHOULD_NEVER_EXIST"
+        ],
+        "post-update-cmd": [
+            "touch SHOULD_NEVER_EXIST"
+        ]
+    }
+}

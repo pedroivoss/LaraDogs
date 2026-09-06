@@ -25,19 +25,47 @@ let the React side call `login.store()`-style functions instead of
 hand-written URL strings; they're regenerated from `routes/*.php` at build
 time, not hand-maintained.
 
-## Planned: an audit run (Phase 2+)
+## Implemented: Project Discovery (Phase 1)
+
+```
+CLI (`php artisan laradogs:inspect {path}`)
+  │
+  ▼
+App\Console\Commands\InspectProjectCommand (thin adapter, no logic)
+  │
+  ▼
+App\Audit\Discovery\ProjectDiscovery::discover()
+  │  path validation (exists / is a directory / readable) → ProjectFilesystem
+  ▼
+ComposerManifest / NpmManifest (safe JSON parse of composer.json/lock,
+  │                              package.json — never executed)
+  ▼
+Inspectors (Composer, Laravel, Frontend, Testing, Infrastructure, Database)
+  │  each reads only static evidence via ProjectFilesystem
+  ▼
+ProfileBuilder → ProjectProfile
+  │
+  ▼
+DiscoveryResult ──▶ CLI human-readable output / `--json`
+```
+
+No `Finding` is produced and no scanner runs — see
+[`../auditing/project-discovery.md`](../auditing/project-discovery.md) and
+[ADR-0008](decisions/ADR-0008-static-project-discovery.md).
+
+## Planned: a full audit run (Phase 2+)
 
 Not implemented. Recorded here so the eventual implementation has a target
 shape consistent with [ADR-0002](decisions/ADR-0002-application-architecture.md)
-and [ADR-0004](decisions/ADR-0004-scanner-execution-strategy.md).
+and [ADR-0004](decisions/ADR-0004-scanner-execution-strategy.md). Phase 1
+(above) already delivers the first step; Phase 2 wraps it in orchestration
+and adds everything after it.
 
 ```
 CLI / MCP tool / Dashboard "Run Scan" action
   │
   ▼
-Audit Core: stack detection
-  │  (Laravel version, Blade/Livewire/Inertia/React/Vue presence,
-  │   Composer/NPM/Docker/CI config present)
+Audit Core: stack detection (Project Discovery — implemented, see above)
   ▼
 Audit Core: scanner selection
   │  (which of composer audit / npm audit / PHPStan / Larastan / ESLint /
@@ -63,7 +91,9 @@ Persistence: immutable Scan record + Findings
 Findings ──▶ CLI output / MCP tool response / Dashboard views / CI gate
 ```
 
-The "Audit Core" box above does not currently correspond to any directory
-in this repository — see [`components.md`](components.md) for what exists
-today, and [`../roadmap/phases.md`](../roadmap/phases.md) for when each
-stage is expected to land.
+Only the first "Audit Core" box (stack detection) currently corresponds to
+a directory in this repository (`app/Audit/Discovery/`) — the rest (scanner
+selection/execution/normalization/correlation/rules, and persistence) does
+not exist yet. See [`components.md`](components.md) for what exists today,
+and [`../roadmap/phases.md`](../roadmap/phases.md) for when each stage is
+expected to land.

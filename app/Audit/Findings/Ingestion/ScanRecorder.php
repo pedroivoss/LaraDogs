@@ -64,6 +64,7 @@ final class ScanRecorder
                         'status' => $execution->status,
                         'summary' => $execution->result?->summary,
                         'diagnostics' => $execution->result?->diagnostics,
+                        'coverage' => $execution->coverage(),
                         'duration_ms' => $execution->durationMs,
                         'note' => $execution->note,
                     ]);

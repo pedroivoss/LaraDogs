@@ -6,6 +6,68 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 3.1: Safe Finding Resolution Coverage
+
+### Fixed
+
+- **Closed a real auto-resolution gap:** a finding was previously eligible
+  for auto-resolution whenever its analyzer completed a scan with
+  `Passed` and wasn't re-observed — but `Passed` only means the analyzer
+  ran without error, not that it verified the specific rule behind an
+  existing finding. A rule removed/disabled/not-loaded while its analyzer
+  still exits cleanly could have silently (and wrongly) auto-resolved a
+  still-present issue. `FindingReconciler` now also requires the
+  execution's declared coverage to verify the finding's `rule_id` — see
+  [ADR-0010's amendment](docs/architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md#amendment-phase-31-coverage-gated-auto-resolution).
+
+### Added
+
+- `App\Audit\Engine\Execution\AnalyzerCoverage`/`CoverageMode`
+  (`Unknown|Explicit|Full`) — an analyzer's own declaration of what its
+  execution actually verified, on `AnalyzerResult`
+  (`App\Audit\Engine\Execution\AnalyzerExecution::coverage()` for
+  convenient access), independent of `status`. Defaults to `Unknown`
+  everywhere; never inferred as `Full`/`Explicit` just because an
+  analyzer reported `Passed`. `rulesetVersion` travels along for
+  provenance only — never consulted to authorize a resolution.
+- A new migration adding a nullable `coverage` JSON column to
+  `scan_analyzer_executions` (the existing table's migration was not
+  edited — schema history preserved) and
+  `App\Models\Audit\Casts\AsAnalyzerCoverage` to cast it.
+- 16 new tests covering all of: explicit coverage naming/not-naming the
+  rule, unknown coverage, no coverage at all, failed/timed-out/
+  unavailable analyzers even with matching coverage, full coverage,
+  ruleset-version independence (different version + matching coverage
+  resolves; same version + non-matching coverage doesn't), analyzer
+  boundaries (one analyzer's coverage never resolves another's finding),
+  suppressed statuses remaining untouched under full coverage, and a
+  full-pipeline reproduction of the original bug (rule disabled between
+  two real scans).
+- Existing fake analyzers (`AlwaysPassAnalyzer`) updated to accept an
+  explicit, optional coverage — defaulting to `Unknown`, never quietly
+  upgraded to keep old assertions passing.
+
+### Clarified
+
+- **Concurrency documentation corrected for precision:**
+  `lockForUpdate()` only locks a row that already exists — it cannot
+  prevent two transactions that both observe "no matching Finding yet"
+  from both attempting an insert. The database's unique constraint on
+  `(project_id, fingerprint, fingerprint_version)` is the actual final
+  guarantee against a duplicate (a losing insert throws a
+  `QueryException`, handled today as a loud scan failure, not a silent
+  retry) — now verified directly by a dedicated test and documented
+  accurately in
+  [`findings-lifecycle.md`](docs/auditing/findings-lifecycle.md#concurrency-limits).
+
+### Notes
+
+- No new ADR — this amends ADR-0010 directly (a refinement of the exact
+  decision it already owns).
+- No real scanner/analyzer integration — coverage is exercised entirely
+  with synthetic candidates and fake analyzers.
+- No new Composer/npm dependencies.
+
 ## [Unreleased] — Phase 3: Finding Domain + Persistence + Lifecycle
 
 ### Added

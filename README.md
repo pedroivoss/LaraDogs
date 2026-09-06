@@ -117,15 +117,17 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   architecture, **not scanners**: `composer audit`/`npm audit`/PHPStan/
   Semgrep/etc. still don't run. See
   [`docs/auditing/audit-engine.md`](docs/auditing/audit-engine.md).
-- **Finding domain & lifecycle** (Phase 3) — a persistent `Project`/
-  `Scan`/`Finding`/`FindingOccurrence` schema with a versioned,
-  line-number-independent fingerprint, full status lifecycle (open →
-  confirmed/resolved/accepted-risk/false-positive/ignored, with
-  append-only history), and safe auto-resolution (a finding is only ever
-  auto-resolved when its own analyzer ran successfully and stopped
-  reporting it — never on failure/timeout/unavailable). **Still fed only
-  by synthetic observations in tests — no real scanner exists to populate
-  it automatically.** See
+- **Finding domain & lifecycle** (Phase 3, hardened in Phase 3.1) — a
+  persistent `Project`/`Scan`/`Finding`/`FindingOccurrence` schema with a
+  versioned, line-number-independent fingerprint, full status lifecycle
+  (open → confirmed/resolved/accepted-risk/false-positive/ignored, with
+  append-only history), and safe, coverage-gated auto-resolution: a
+  finding is only ever auto-resolved when its own analyzer ran
+  successfully **and explicitly declared that it verified this finding's
+  rule** — never on failure/timeout/unavailable, and never on a clean run
+  that says nothing about coverage (a rule being disabled/removed is not
+  the same as it being fixed). **Still fed only by synthetic observations
+  in tests — no real scanner exists to populate it automatically.** See
   [`docs/auditing/findings-lifecycle.md`](docs/auditing/findings-lifecycle.md).
 - A Laravel 13 application with React + Inertia (official starter kit),
   Fortify-based authentication, and a single authenticated dashboard page

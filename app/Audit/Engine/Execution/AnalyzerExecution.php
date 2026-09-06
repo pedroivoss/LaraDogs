@@ -71,6 +71,22 @@ final readonly class AnalyzerExecution implements JsonSerializable
     }
 
     /**
+     * The coverage this execution's analyzer declared (see
+     * {@see AnalyzerCoverage}) — {@see AnalyzerCoverage::unknown()} when
+     * the analyzer never ran (`result` is null) or declared nothing.
+     * Never itself upgraded to Full/Explicit just because `status` is
+     * Passed.
+     */
+    public function coverage(): AnalyzerCoverage
+    {
+        if ($this->result === null) {
+            return AnalyzerCoverage::unknown();
+        }
+
+        return $this->result->coverage;
+    }
+
+    /**
      * @return array<string,mixed>
      */
     public function jsonSerialize(): array

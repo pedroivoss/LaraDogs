@@ -162,6 +162,28 @@ findings; `AnalyzerResult.rawMetadata` exists as an escape hatch for
 whatever intermediate shape that ends up needing, without this phase
 guessing at it.
 
+## Coverage
+
+`AnalyzerResult` (and, via it, `AnalyzerExecution::coverage()`) carries an
+`App\Audit\Engine\Execution\AnalyzerCoverage` — an analyzer's own
+declaration of what its execution actually **verified**, entirely
+separate from `status`. `ExecutionStatus::Passed` means the analyzer ran
+without error; it says nothing about which rules it checked. Modes
+(`CoverageMode`): `Unknown` (the default whenever an analyzer declares
+nothing — never treated as a stronger claim just because `status` is
+`Passed`), `Explicit` (a list of verified `rule_id`s), and `Full` (the
+entire relevant domain was covered — only ever set explicitly, never
+inferred). An optional `rulesetVersion` travels along for provenance only.
+
+This exists in the Engine (not in the Findings domain) because coverage
+is a property of an analyzer's own execution, declared the same way
+`diagnostics`/`summary` already are — Phase 3's
+`FindingReconciler` is its first real consumer (auto-resolution must not
+trust `Passed` alone; see
+[`findings-lifecycle.md`](findings-lifecycle.md#coverage-why-passed-alone-isnt-enough)
+and [ADR-0010's amendment](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md#amendment-phase-31-coverage-gated-auto-resolution)),
+but nothing about the type is Findings-specific.
+
 ## Security boundary
 
 - **Target code execution:** nothing in the Audit Engine executes

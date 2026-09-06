@@ -73,8 +73,12 @@ what it does and doesn't catch.
 ## Findings don't silently disappear
 
 A finding that stops being reported isn't deleted — and isn't even marked
-resolved unless it's actually safe to conclude that (see
-[Auto-resolution safety](findings-lifecycle.md#auto-resolution-safety)).
+resolved unless it's actually safe to conclude that. **A clean analyzer
+run alone is not enough:** the analyzer must also have declared, via its
+own `AnalyzerCoverage`, that it actually verified this finding's
+`rule_id` this run — a rule being disabled/removed/not-loaded is
+otherwise indistinguishable from "verified and no longer present." See
+[Auto-resolution safety](findings-lifecycle.md#auto-resolution-safety).
 Every status change, automatic or manual, is recorded in
 `finding_status_histories` — see
 [`findings-lifecycle.md`](findings-lifecycle.md#lifecycle) and

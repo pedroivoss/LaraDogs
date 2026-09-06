@@ -4,6 +4,7 @@ use App\Audit\Discovery\ProjectDiscovery;
 use App\Audit\Engine\AuditContext;
 use App\Audit\Engine\AuditEngine;
 use App\Audit\Engine\Contracts\AnalyzerId;
+use App\Audit\Engine\Execution\AnalyzerCoverage;
 use App\Audit\Engine\Registry\AnalyzerRegistry;
 use App\Audit\Findings\FindingStatus;
 use App\Audit\Findings\Fingerprint\Fingerprinter;
@@ -73,7 +74,9 @@ it('records a full scan end-to-end: real Discovery + real Engine + Phase 3 persi
 
 it('auto-resolves a finding across two full scans once its analyzer stops reporting it', function () {
     $registry = new AnalyzerRegistry;
-    $registry->register(new AlwaysPassAnalyzer('composer-security'));
+    // Coverage must be declared explicitly — a Passed status alone is not
+    // enough since Phase 3.1 (see FindingReconciler).
+    $registry->register(new AlwaysPassAnalyzer('composer-security', AnalyzerCoverage::explicit(['LARA-SEC-023'])));
     $recorder = makeScanRecorder();
 
     $contextOne = buildRealAuditContext('laravel-blade', 'run-a');
@@ -94,6 +97,35 @@ it('auto-resolves a finding across two full scans once its analyzer stops report
     $recorder->completeScan($scanTwo, $runResultTwo, []);
 
     expect(Finding::query()->firstOrFail()->status)->toBe(FindingStatus::Resolved);
+});
+
+it('does not auto-resolve across two full scans when the analyzer passed but its rule was disabled/removed from coverage', function () {
+    // This is the exact gap Phase 3.1 closes: the analyzer keeps passing,
+    // but its second run's coverage no longer names the rule behind the
+    // finding (e.g. the rule was disabled/removed from this ruleset) — the
+    // finding not reappearing must NOT be read as "fixed."
+    $registryOne = new AnalyzerRegistry;
+    $registryOne->register(new AlwaysPassAnalyzer('composer-security', AnalyzerCoverage::explicit(['LARA-SEC-023'])));
+
+    $contextOne = buildRealAuditContext('laravel-blade', 'run-rule-removed-a');
+    $project = Project::query()->create(['name' => 'Example', 'path' => $contextOne->projectPath]);
+    $recorder = makeScanRecorder();
+
+    $scanOne = $recorder->startScan($project, $contextOne->profile);
+    $recorder->completeScan($scanOne, (new AuditEngine($registryOne))->run($contextOne), [
+        'composer-security' => [SyntheticCandidates::sqlInjection()],
+    ]);
+
+    $registryTwo = new AnalyzerRegistry;
+    // Same analyzer id, still Passed — but LARA-SEC-023 is no longer in
+    // its declared coverage (disabled/removed from this ruleset).
+    $registryTwo->register(new AlwaysPassAnalyzer('composer-security', AnalyzerCoverage::explicit(['LARA-SEC-001'])));
+
+    $contextTwo = buildRealAuditContext('laravel-blade', 'run-rule-removed-b');
+    $scanTwo = $recorder->startScan($project, $contextTwo->profile);
+    $recorder->completeScan($scanTwo, (new AuditEngine($registryTwo))->run($contextTwo), []);
+
+    expect(Finding::query()->firstOrFail()->status)->toBe(FindingStatus::Open);
 });
 
 it('does not auto-resolve when the only analyzer that ran is not applicable to this project', function () {

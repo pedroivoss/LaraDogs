@@ -123,26 +123,67 @@ finding that may well still be present — re-detecting it doesn't
 invalidate that judgment. Only a human (or a future explicit policy) moves
 a finding out of a suppressed status.
 
+### Coverage: why "Passed" alone isn't enough
+
+**`ExecutionStatus::Passed` means the analyzer ran without error — it
+does NOT mean the analyzer verified every rule it has ever produced a
+finding for.** A rule can be removed, disabled, or simply not loaded into
+a given run's ruleset while the analyzer itself still exits cleanly. If
+auto-resolution trusted `Passed` alone, a finding could be silently (and
+wrongly) marked fixed the moment its rule stopped running — not because
+the underlying issue went away, but because nobody was looking for it
+anymore.
+
+`App\Audit\Engine\Execution\AnalyzerCoverage` is the analyzer's own,
+separate declaration of what it actually verified this run
+(`App\Audit\Engine\Execution\CoverageMode`):
+
+- **`Unknown`** — no coverage evidence. The default whenever an analyzer
+  declares nothing. Never authorizes resolution, regardless of `status`.
+- **`Explicit`** — the analyzer lists the exact `rule_id`s it verified
+  this run. Only findings whose `rule_id` is in that list are eligible.
+- **`Full`** — the analyzer declares this run covered its entire relevant
+  domain (any `rule_id` counts as verified). **Never inferred** from
+  `status === Passed` — only set by an explicit analyzer declaration.
+
+An optional `rulesetVersion` travels alongside coverage for future
+traceability (e.g. "ruleset 2026.09.1") — it is **provenance only** and is
+never consulted by `AnalyzerCoverage::verifies()`. A ruleset version bump
+with unchanged coverage authorizes nothing new; coverage changing (even
+under an unchanged version) changes everything. Coverage lives on
+`AnalyzerResult`/`AnalyzerExecution` (Phase 2) — it's a property of the
+analyzer's own execution, not of the Finding domain, so any future
+consumer besides reconciliation can read it the same way.
+
 ### Auto-resolution safety
 
 **The single most important safety rule in this domain.** A finding may
-be auto-resolved ONLY when both are true:
+be auto-resolved ONLY when ALL of the following are true:
 
 1. Its `analyzer_id` completed the scan with `ExecutionStatus::Passed`
    (checked against `scan_analyzer_executions` for that scan — see
    [Scan Analyzer Executions](#scan-analyzer-executions) below).
-2. It received no new occurrence in that scan.
+2. That execution's declared `AnalyzerCoverage` actually
+   [verifies](#coverage-why-passed-alone-isnt-enough) the finding's
+   `rule_id` — `Unknown` coverage never satisfies this, even under
+   `Passed`.
+3. It received no new occurrence in that scan.
 
 `App\Audit\Findings\Ingestion\FindingReconciler::reconcile(Project, Scan)`
-runs this after all of a scan's candidates are ingested: it computes which
-analyzers completed with `Passed` this scan, then auto-resolves every
-`OPEN`/`CONFIRMED` finding belonging to one of those analyzers that wasn't
-re-observed. Everything else — findings whose analyzer wasn't part of this
-scan, was `NotApplicable`, `Unavailable`, `Failed`, `TimedOut`, or
-`Skipped` — is left **completely untouched**, no matter how many scans
-pass without them being checked. "Confirmed absent" and "not checked" must
-never be confused; that's the entire reason `scan_analyzer_executions`
-exists.
+runs this after all of a scan's candidates are ingested: for each
+execution that completed `Passed`, it checks that execution's coverage,
+then auto-resolves every `OPEN`/`CONFIRMED` finding belonging to that same
+`analyzer_id` whose `rule_id` the coverage verifies and that wasn't
+re-observed. Coverage is evaluated per execution, so it never crosses
+analyzer boundaries — one analyzer's `Full` coverage can never resolve a
+finding that belongs to a different analyzer. Everything else — findings
+whose analyzer wasn't part of this scan, was `NotApplicable`,
+`Unavailable`, `Failed`, `TimedOut`, `Skipped`, or ran with `Unknown`
+coverage (including simply reporting none) — is left **completely
+untouched**, no matter how many scans pass without them being verifiably
+checked. "Confirmed absent" and "not checked" must never be confused;
+that's the reason both `scan_analyzer_executions` and its `coverage`
+column exist.
 
 ### Regression / reopening
 
@@ -161,10 +202,15 @@ new_status=open` without a dedicated column.
 `scan_analyzer_executions` persists one row per
 `App\Audit\Engine\Execution\AnalyzerExecution` (Phase 2) for a given scan
 — analyzer id/name/category, final `ExecutionStatus`, summary,
-diagnostics, duration. This is not incidental bookkeeping: it is the data
+diagnostics, **coverage** (nullable JSON — the analyzer's declared
+`AnalyzerCoverage`, cast via `App\Models\Audit\Casts\AsAnalyzerCoverage`;
+a missing/unparseable value casts to `Unknown`, never a more permissive
+mode), duration. This is not incidental bookkeeping: it is the data
 `FindingReconciler` depends on to know whether auto-resolution is safe.
-Without it, "this finding didn't reappear" would be indistinguishable from
-"this finding's analyzer never even ran."
+Without status alone, "this finding didn't reappear" would be
+indistinguishable from "this finding's analyzer never even ran"; without
+coverage too, it would also be indistinguishable from "this finding's
+_rule_ was never even checked, even though the analyzer itself ran fine."
 
 ## Diagnostics vs. Findings (recap)
 
@@ -212,13 +258,38 @@ serializes writers at the connection/transaction level.
 
 ## Concurrency limits
 
-Two concurrent scans for the same project ingesting the same fingerprint
-are protected by `lockForUpdate()` plus the `(project_id, fingerprint,
-fingerprint_version)` unique constraint. This is not a distributed-cluster
+Ingestion for one candidate runs inside a single `DB::transaction()`.
+Within that transaction, `FindingIngestor` looks up a matching `Finding`
+with `lockForUpdate()` — **but precisely stated, this only locks a row
+that already exists.** If two concurrent transactions both run their
+lookup before either has inserted anything, both see "no matching row"
+and neither is blocked by the lock (there is nothing yet to lock); both
+may then attempt to insert a `Finding` for the same
+`(project_id, fingerprint, fingerprint_version)`.
+
+The **actual final guarantee** against a duplicate in that race is the
+database's **unique constraint** on `(project_id, fingerprint,
+fingerprint_version)`: the second transaction's insert is rejected by the
+database itself (a `QueryException`), never silently creating a second
+row for the same logical identity — verified directly by a dedicated test
+(`FindingIngestionTest`) that performs two conflicting inserts and asserts
+the second throws. `lockForUpdate()` still matters for the (far more
+common) case where the row already exists by the time a second ingestion
+reads it — e.g. two scans updating the same finding's `last_seen_at`
+concurrently — but it is not, by itself, what prevents a duplicate
+_creation_.
+
+Today, a real create/create race surfaces as a thrown `QueryException`
+from `FindingIngestor::ingest()` — `ScanRecorder::completeScan()` catches
+it, marks the `Scan` `Failed`, and re-throws; there is no automatic
+retry-and-re-fetch. This is a deliberate, safe failure mode (loud and
+non-corrupting, consistent with this domain's fail-closed philosophy), not
+a claim that the race can't happen. This is not a distributed-cluster
 solution — it assumes a single database connection/transaction boundary
 per ingestion, which is what LaraDogs' current single-process model
 provides. Nothing here has been tested against, or is claimed to work
-under, multi-node concurrent writers.
+under, multi-node concurrent writers or sophisticated retry policies —
+both remain explicitly out of scope.
 
 ## IDs
 
@@ -245,3 +316,9 @@ touching it.
   timeout policy (Phase 2 already covers the base case), a real secret
   scanner, and multi-connection database evidence — see
   [ADR-0010](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md#consequences).
+- Automatic retry-and-re-fetch on a create/create race (see
+  [Concurrency limits](#concurrency-limits)) — today it's a loud, safe
+  failure, not a silent retry.
+- Any real ruleset/rules-pack system — `AnalyzerCoverage.rulesetVersion`
+  is a plain optional string for future provenance, not a versioned rules
+  package format.

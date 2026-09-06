@@ -13,6 +13,7 @@ use App\Models\Audit\Finding;
 use App\Models\Audit\FindingOccurrence;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\Findings\SyntheticCandidates;
 use Tests\TestCase;
@@ -179,4 +180,44 @@ it('redacts an obvious secret found in candidate metadata before persisting it',
 
     expect($occurrence->code_snippet)->not->toContain('abcdefghijklmnopqrstuvwxyz123456');
     expect($occurrence->code_snippet)->toContain('****');
+});
+
+it('relies on the database unique constraint, not application locking alone, as the final guarantee against a duplicate Finding', function () {
+    // lockForUpdate() only locks a ROW THAT ALREADY EXISTS — it cannot
+    // prevent two transactions that both observe "no matching Finding
+    // yet" from both attempting to insert one for the same (project,
+    // fingerprint, fingerprint_version). This test proves the actual
+    // final safeguard against a duplicate: the database's unique
+    // constraint on that triple. See
+    // docs/auditing/findings-lifecycle.md#concurrency-limits.
+    $project = makeIngestionProject();
+    $scan = makeIngestionScan($project);
+    $candidate = SyntheticCandidates::sqlInjection();
+    $fingerprint = (new Fingerprinter)->fingerprint($candidate);
+
+    $attributes = [
+        'project_id' => $project->id,
+        'fingerprint' => $fingerprint,
+        'fingerprint_version' => Fingerprinter::VERSION,
+        'rule_id' => $candidate->ruleId,
+        'analyzer_id' => $candidate->analyzerId,
+        'category' => $candidate->category,
+        'severity' => $candidate->severity,
+        'confidence' => $candidate->confidence,
+        'title' => $candidate->title,
+        'status' => FindingStatus::Open,
+        'first_seen_scan_id' => $scan->id,
+        'first_seen_at' => now(),
+        'last_seen_scan_id' => $scan->id,
+        'last_seen_at' => now(),
+    ];
+
+    // The "winning" transaction of a hypothetical race.
+    Finding::query()->create($attributes);
+
+    // The "losing" transaction attempting the same insert must fail
+    // loudly at the database level, never silently succeed and create a
+    // second row for the same logical identity.
+    expect(fn () => Finding::query()->create($attributes))->toThrow(QueryException::class);
+    expect(Finding::query()->count())->toBe(1);
 });

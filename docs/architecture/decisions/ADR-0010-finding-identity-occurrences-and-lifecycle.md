@@ -7,6 +7,12 @@ without changing its core decisions; this ADR resolves the details ADR-0003
 deliberately left open (exact fingerprint algorithm, occurrence/history
 split, auto-resolution safety).
 
+**Amended (Phase 3.1 — Safe Finding Resolution Coverage):** the original
+auto-resolution rule below ("its own analyzer completed this scan with
+`Passed`") was necessary but not sufficient, and has been tightened. See
+[Amendment: coverage-gated auto-resolution](#amendment-phase-31-coverage-gated-auto-resolution)
+at the end of this ADR. Everything else in this ADR is unchanged.
+
 ## Context
 
 ADR-0003 fixed two constraints for the `Finding` domain — severity and
@@ -93,12 +99,19 @@ IGNORED` (unchanged from ADR-0003/suppressions.md). `REGRESSED` is
 transition itself rather than needing its own persistent state a finding
 could get stuck in.
 
-**The critical safety rule:** a finding may be auto-resolved ONLY when:
+**The critical safety rule (Phase 3 original — see the Phase 3.1 amendment
+below, which tightens condition 1):** a finding may be auto-resolved ONLY
+when:
 
 1. Its `analyzer_id` completed the current scan with
    `ExecutionStatus::Passed` (persisted per-scan in
    `scan_analyzer_executions` — see below), AND
 2. It received no new occurrence in that scan.
+
+Phase 3.1 found this insufficient: `Passed` means the analyzer ran without
+error, not that it verified the specific rule behind an existing finding
+(a rule can be removed/disabled/not-loaded while the analyzer itself still
+exits cleanly). Condition 1 above is superseded — see the amendment.
 
 An analyzer that didn't run, wasn't applicable, was unavailable, failed,
 or timed out gives **no evidence** the underlying issue is gone — findings
@@ -167,3 +180,78 @@ always inherited from the analyzer/rule that produced it.
   explicitly deferred — none of them block this phase's core guarantee:
   findings persist correctly across scans without ever being silently
   lost, duplicated, or falsely resolved.
+
+## Amendment (Phase 3.1): Coverage-gated auto-resolution
+
+### Context
+
+Phase 3's rule — "auto-resolve when the finding's analyzer completed the
+scan `Passed` and wasn't re-observed" — has a gap: `Passed` is a claim
+about the analyzer's own execution health, not about which rules it
+actually verified. An analyzer can exit cleanly while the specific rule
+behind an existing finding was removed, disabled, or simply not loaded
+into that run's ruleset. Under the Phase 3 rule alone, that finding would
+be silently (and wrongly) auto-resolved the moment the analyzer next
+passes — a false "fixed" that hides a real, still-present issue.
+`ExecutionStatus::Passed` and "this finding's rule was verified" are
+different claims and must not be conflated.
+
+### Decision
+
+- **A new claim, `AnalyzerCoverage`** (`App\Audit\Engine\Execution\AnalyzerCoverage`,
+  with `CoverageMode`: `Unknown | Explicit | Full`), lives on
+  `AnalyzerResult` (Phase 2) — an analyzer's own declaration of what its
+  execution actually verified, entirely independent of `status`.
+    - `Unknown` (the default whenever an analyzer says nothing) never
+      authorizes resolution.
+    - `Explicit` lists the exact rule ids verified this run; only findings
+      whose `rule_id` is in that list are eligible.
+    - `Full` declares the run covered its entire relevant domain — **never**
+      inferred from `status === Passed`; only ever set by an explicit
+      analyzer declaration.
+    - `rulesetVersion` (optional, on `AnalyzerCoverage`) is provenance only
+      — it is never consulted to authorize or block a resolution. A version
+      bump with unchanged coverage changes nothing; coverage changing
+      (even under an unchanged version) changes everything.
+- **The auto-resolution rule is now:** a finding may be auto-resolved
+  only when (1) it's `OPEN`/`CONFIRMED`, (2) its analyzer completed this
+  scan `Passed`, (3) that execution's `AnalyzerCoverage.verifies(rule_id)`
+  is true for the finding's `rule_id`, and (4) it received no new
+  occurrence this scan. `App\Audit\Findings\Ingestion\FindingReconciler`
+  enforces all four; coverage evaluation happens per analyzer execution,
+  so a finding is only ever resolved by the execution belonging to its
+  own `analyzer_id` — coverage never crosses analyzer boundaries.
+- **Persisted alongside each `scan_analyzer_executions` row** (a nullable
+  JSON `coverage` column, added via a new migration — the existing
+  `scan_analyzer_executions` migration was not edited) so historical
+  reconciliation has the same evidence a live scan would.
+- **Belongs to the Audit Engine, not the Findings domain.** `coverage` is
+  a property of `AnalyzerResult`/exposed via `AnalyzerExecution::coverage()`
+  (Phase 2) — an analyzer declares it about its own run regardless of who
+  consumes it. This avoids inverting the dependency (Findings does not
+  reach into the Engine's internals; the Engine's own execution-result
+  contract simply grew a field that Findings, among any future consumer,
+  can read).
+- **Existing fake analyzers were updated explicitly, not defaulted to
+  permissive.** `AlwaysPassAnalyzer` (and any test relying on it for
+  auto-resolution) now accepts an optional `AnalyzerCoverage`, defaulting
+  to `Unknown` — tests demonstrating a real resolution must opt in
+  explicitly to `Explicit`/`Full` coverage. Nothing was made to default to
+  `Full` merely to keep old assertions green.
+
+### Consequences
+
+- Phase 4's first real analyzer must decide, per run, what coverage it
+  can honestly declare — an analyzer that can't enumerate what it checked
+  should report `Unknown` and accept that its findings won't auto-resolve
+  until it can.
+- `docs/auditing/findings-lifecycle.md`'s concurrency section was also
+  corrected during this amendment: `lockForUpdate()` only locks a row that
+  already exists; it cannot prevent two transactions that both observe
+  "no matching Finding yet" from both attempting an insert. The database's
+  unique constraint on `(project_id, fingerprint, fingerprint_version)` is
+  the actual final guarantee against a duplicate — verified by a
+  dedicated test (`FindingIngestionTest`).
+- No new ADR was created — this amends ADR-0010 directly, since coverage
+  is a refinement of the exact auto-resolution decision this ADR already
+  owns, not an independent decision.

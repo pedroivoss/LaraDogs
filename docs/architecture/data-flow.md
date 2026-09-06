@@ -99,8 +99,10 @@ ScanRecorder::completeScan(scan, runResult, candidatesByAnalyzer)
   │     → reopen if previously Resolved; suppressed statuses untouched
   │
   ├─▶ FindingReconciler::reconcile()
-  │     auto-resolves OPEN/CONFIRMED findings whose analyzer completed
-  │     Passed this scan and were not re-observed — nothing else
+  │     auto-resolves OPEN/CONFIRMED findings only when: analyzer
+  │     completed Passed this scan AND its declared AnalyzerCoverage
+  │     verifies the finding's rule_id AND it was not re-observed
+  │     (Passed alone is not sufficient — Phase 3.1)
   │
   ▼
 Scan marked Completed (or Failed, on exception) with findings_summary

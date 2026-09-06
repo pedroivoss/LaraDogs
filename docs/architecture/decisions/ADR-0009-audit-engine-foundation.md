@@ -4,6 +4,15 @@
 
 Accepted (Phase 2).
 
+**Note (Phase 3.1):** `AnalyzerResult` gained an `AnalyzerCoverage` field
+(`App\Audit\Engine\Execution\AnalyzerCoverage`/`CoverageMode`) — an
+analyzer's own declaration of what its execution actually verified,
+independent of `status`. This is a small, additive extension of the
+contract this ADR already established (analyzer-declared execution
+metadata), not a new architectural decision; the reasoning lives in
+[ADR-0010's amendment](ADR-0010-finding-identity-occurrences-and-lifecycle.md#amendment-phase-31-coverage-gated-auto-resolution),
+since coverage exists specifically to make Finding auto-resolution safe.
+
 ## Context
 
 Phase 1 (Project Discovery) produces a `ProjectProfile` describing a

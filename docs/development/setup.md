@@ -7,8 +7,13 @@ Verified working with, during Phase 0 bootstrap:
 - PHP **8.3+** (Laravel 13 requires 8.3–8.5; developed against 8.3.12)
 - Composer 2.x
 - Node.js **20+** (developed against 22.22.2) and npm
-- SQLite support in PHP (`pdo_sqlite`, `sqlite3` — bundled with most PHP
-  installs)
+- A database: SQLite (`pdo_sqlite`, `sqlite3` — bundled with most PHP
+  installs) is the Quick Start default below, but MySQL, MariaDB, and
+  PostgreSQL are equally supported — set `DB_CONNECTION` (and
+  `DB_HOST`/`DB_DATABASE`/`DB_USERNAME`/`DB_PASSWORD`) in `.env` to the
+  vendor of your choice, with the matching PHP PDO extension
+  (`pdo_mysql`/`pdo_pgsql`) installed. See
+  [ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md).
 
 ## Steps
 

@@ -1,9 +1,13 @@
 # LaraDogs — "Personal" profile.
 #
-# Minimal single-container setup for local/self-hosted use with SQLite.
-# The future "Server" profile (PostgreSQL, Redis, queue workers, scheduler,
-# reverse proxy) is tracked in docs/roadmap/roadmap.md and is intentionally
-# not built here — see ADR-0005.
+# Minimal single-container setup for local/self-hosted use, running SQLite.
+# SQLite is this image's current implementation choice, not an
+# architectural requirement — LaraDogs also officially supports MySQL,
+# MariaDB, and PostgreSQL (see docs/architecture/decisions/ADR-0007), just
+# not yet wired into this Docker image (docs/development/docker.md).
+# The future "Server" profile (Redis, queue workers, scheduler, reverse
+# proxy) is tracked in docs/roadmap/roadmap.md and is intentionally not
+# built here — see ADR-0005.
 #
 # First run:
 #   cp .env.example .env

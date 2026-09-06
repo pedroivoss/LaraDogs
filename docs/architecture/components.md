@@ -48,8 +48,15 @@ Phase 7.
 
 ## Database
 
-- Driver: SQLite (`database/database.sqlite`, gitignored via
-  `database/.gitignore`).
+- Driver today: SQLite (`database/database.sqlite`, gitignored via
+  `database/.gitignore`), selected via `DB_CONNECTION=sqlite` in
+  `.env.example` — the Quick Start default, not an architectural
+  requirement. MySQL, MariaDB, and PostgreSQL are equally supported
+  through the same `config/database.php` (stock Laravel connections, no
+  LaraDogs-specific code); see
+  [ADR-0007](decisions/ADR-0007-database-agnostic-persistence.md).
+  The current Docker quick-start image only bundles the `pdo_sqlite`
+  extension — see [`../development/docker.md`](../development/docker.md).
 - Migrations present are all starter-kit ones: users, cache, jobs,
   passkeys, two-factor columns. **No audit-domain migrations exist.**
 

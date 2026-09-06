@@ -43,6 +43,10 @@ Implement the `Finding` model per ADR-0003, the `Scan` model per ADR-0005,
 migrations, and the normalization layer that turns Phase 2's raw scanner
 output into `Finding` records. Fingerprinting strategy is decided here
 against real scanner output, constrained by ADR-0003 (not line-number-only).
+Migrations must follow the portability constraints in
+[ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md)
+(SQLite/MySQL/MariaDB/PostgreSQL), not be authored/tested against SQLite
+alone.
 
 ## Phase 4 — Security / Dependency Scanners
 

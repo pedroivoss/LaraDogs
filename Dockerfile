@@ -1,6 +1,10 @@
 # LaraDogs — "Personal" profile image.
 #
-# Single-container build meant for local/self-hosted quick start with SQLite.
+# Single-container build meant for local/self-hosted quick start, running
+# SQLite. SQLite is this image's current implementation choice, not an
+# architectural requirement — see docs/architecture/decisions/ADR-0007
+# (MySQL/MariaDB/PostgreSQL are equally supported by LaraDogs, just not yet
+# wired into this image) and docs/development/docker.md.
 # Not tuned for high-concurrency production traffic (see docs/development/docker.md
 # and the future "Server" profile in the roadmap).
 

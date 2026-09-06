@@ -42,10 +42,12 @@ creep" instruction for this phase.
   `/register` route is open. For a security tool, this should likely be
   invite-only or admin-provisioned before real findings exist behind it.
   → Phase 10.
-- **Server deployment profile** (PostgreSQL, Redis, queue workers,
-  scheduler, reverse proxy, multi-project). → Tracked across Phase 3
-  (multi-project schema), Phase 8 (workers for scan execution), and a
-  dedicated Docker Compose profile likely alongside Phase 11/13.
+- **Server deployment profile** (Redis, queue workers, scheduler, reverse
+  proxy, multi-project). → Tracked across Phase 3 (multi-project schema),
+  Phase 8 (workers for scan execution), and a dedicated Docker Compose
+  profile likely alongside Phase 11/13. Database vendor choice for this
+  profile — SQLite, MySQL, MariaDB, or PostgreSQL — is independent of it;
+  see [ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md).
 - **Scanner sandboxing implementation** (containers-per-run vs. restricted
   subprocess). Constraint recorded in ADR-0004; concrete mechanism is a
   Phase 4 decision, not a Phase 0 one.

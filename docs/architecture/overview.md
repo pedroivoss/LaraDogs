@@ -50,8 +50,11 @@ Inertia starter kit) with:
   verification, 2FA, passkeys) — starter-kit scaffolding, not
   LaraDogs-specific.
 - A single Inertia-rendered dashboard page reachable after login.
-- SQLite storage, a `/up` health-check route, and a Docker Compose setup
-  for the "Personal" deployment profile.
+- Configurable SQL persistence — SQLite by default for zero-config Quick
+  Start, with MySQL, MariaDB, and PostgreSQL also officially supported
+  (see [ADR-0007](decisions/ADR-0007-database-agnostic-persistence.md)) —
+  a `/up` health-check route, and a Docker Compose setup for the
+  "Personal" deployment profile.
 
 There is **no Audit Core, no Finding model, no scanner integration, no MCP
 server, and no CLI beyond stock Artisan commands.** The diagram above is

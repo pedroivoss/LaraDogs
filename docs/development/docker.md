@@ -1,10 +1,15 @@
 # Docker (Personal Profile)
 
-Phase 0 ships a single-container Docker setup for local/self-hosted use
-with SQLite. This is the "Personal" profile described in
+Phase 0 ships a single-container Docker setup for local/self-hosted use,
+running SQLite. The single-container shape is the "Personal" profile
+described in
 [ADR-0005](../architecture/decisions/ADR-0005-persistence-and-deployment-profiles.md).
-There is no "Server" profile (PostgreSQL, Redis, workers, scheduler,
-reverse proxy) yet — see the roadmap.
+SQLite is this image's current **implementation** choice, not an
+architectural one — LaraDogs officially supports MySQL, MariaDB, and
+PostgreSQL too; see
+[ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md)
+and [Database support](#database-support) below. There is no "Server"
+profile (Redis, workers, scheduler, reverse proxy) yet — see the roadmap.
 
 ## Start
 
@@ -27,6 +32,21 @@ before starting; the entrypoint fails fast with a clear error if it isn't
 The container's entrypoint (`docker/entrypoint.sh`) is idempotent: on every
 start it creates `database/database.sqlite` if missing and runs `php
 artisan migrate --force`. It's safe to run repeatedly.
+
+## Database support
+
+This image currently installs only the `pdo_sqlite`/`sqlite3` PHP
+extensions in the `runtime` stage, so it only runs SQLite out of the box.
+This is a **current implementation limitation of this Docker image**, not
+an architectural restriction — LaraDogs itself supports MySQL, MariaDB,
+and PostgreSQL equally (ADR-0007). Adding the `pdo_mysql`/`pdo_pgsql`
+extensions to the runtime stage is straightforward future work, not done
+in this pass to avoid unrelated Docker changes.
+
+To use MySQL/MariaDB/PostgreSQL today, run LaraDogs outside this image
+(see [`setup.md`](setup.md)) with `DB_CONNECTION`/`DB_HOST`/`DB_DATABASE`/
+etc. pointed at an external database instance that has the matching PHP
+PDO extension available.
 
 ## Stop
 
@@ -75,27 +95,25 @@ work, tracked in [`../roadmap/roadmap.md`](../roadmap/roadmap.md).
   the runtime stage copies anything, and no `.env` file exists inside the
   final image. Real configuration is supplied at runtime via
   `docker-compose.yml`'s `env_file: .env`, which the user is expected to
-  have created with their own values.
-- **`docker compose build` could not be verified end-to-end in the Phase 0
-  development environment.** `docker compose config` validates cleanly
-  (confirms the YAML, env interpolation, volumes, and port mapping are all
-  correct), and the `Dockerfile` was reviewed instruction-by-instruction,
-  but the actual build hung indefinitely — over 20 minutes with zero
-  progress and no network activity — while Docker Desktop's BuildKit
-  attempted to resolve/pull base images from Docker Hub. To isolate
-  whether this was specific to our Dockerfile, a plain `docker pull
-hello-world` (no relation to this project) was attempted directly and
-  hung the same way, while `curl` from the host to
-  `registry-1.docker.io` and `auth.docker.io` succeeded immediately. This
-  points to a networking issue inside the Docker Desktop Linux VM in this
-  particular session (not this project's Docker files), most likely
-  requiring a Docker Desktop restart to clear. That restart was
-  **deliberately not performed** during Phase 0, because this machine's
-  Docker Desktop instance also hosts running containers for other,
-  unrelated projects (`webserver-db-1`, `webserver-redis-server-1`,
-  `webserver-php-1`, `webserver-docs-mcp-1`) that a restart would
-  interrupt — outside this task's authorized scope. **Action for whoever
-  picks this up:** restart Docker Desktop (or otherwise reset its VM
-  networking) in an environment where that's safe, then re-run `docker
-compose up --build` — the Dockerfile/Compose files themselves are
-  believed correct pending that verification.
+  have created with their own values (including a real `APP_KEY` — see
+  above).
+- `docker compose build && docker compose up` has been verified
+  end-to-end: image builds, container reaches `healthy`, and `GET /up`
+  returns `200` on a fresh volume. Two bugs found during that verification
+  were fixed:
+    1. The `runtime` stage installed `libsqlite3-0` (runtime lib) but not
+       `libsqlite3-dev`/`pkg-config`, so `docker-php-ext-install pdo_sqlite`
+       failed to configure. Fixed by installing the dev headers and
+       `pkg-config` for the build, then purging them
+       (`apt-get purge -y --auto-remove`) so the final layer keeps only the
+       runtime `.so`.
+    2. `WORKDIR /app` runs as root before `USER laradogs` is set, so `/app`
+       itself (not just the subdirectories explicitly `chown`'d) was
+       root-owned; the entrypoint's old `cp .env.example .env` step failed
+       with `Permission denied`. Fixed by `chown laradogs:laradogs /app`
+       right after the `WORKDIR`, and by removing the `.env`/`APP_KEY`
+       generation logic from the entrypoint entirely (see above — it could
+       never have worked given `env_file`-supplied configuration; it just
+       printed a confusing error while the app still ran, because
+       `APP_KEY` was in fact already present as a real environment
+       variable).

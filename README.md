@@ -98,8 +98,10 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
 
 - A Laravel 13 application with React + Inertia (official starter kit),
   Fortify-based authentication, and a single authenticated dashboard page.
-- SQLite storage, `/up` health check, Pest test suite (starter-kit
-  coverage only).
+- Configurable SQL persistence (SQLite by default for zero-config Quick
+  Start; MySQL, MariaDB, and PostgreSQL are also officially supported — see
+  [Database support](#database-support)), `/up` health check, Pest test
+  suite (starter-kit coverage only).
 - Docker Compose for local self-hosted use (non-root runtime container,
   idempotent entrypoint).
 - The documentation and architectural decisions this README links to.
@@ -116,6 +118,28 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
 the full phase list.
 
 **Experimental:** none yet.
+
+## Database support
+
+- SQLite
+- MySQL / MariaDB
+- PostgreSQL
+
+All four are supported via standard Laravel configuration
+(`DB_CONNECTION`) — no vendor-specific code exists or is planned for basic
+persistence. Quick Start below defaults to SQLite for zero-configuration
+setup; it's the easiest way to try LaraDogs, not an architectural
+requirement. Deployment profiles (Personal/Server, as they materialize)
+don't dictate a database vendor either — see
+[ADR-0007](docs/architecture/decisions/ADR-0007-database-agnostic-persistence.md).
+
+This is entirely separate from the database used by a project LaraDogs
+audits: the Audit Core never assumes a target project's database vendor
+matches LaraDogs' own.
+
+The current Docker quick-start image only ships the SQLite PHP extension;
+using MySQL/MariaDB/PostgreSQL today means running outside that image (see
+[`docs/development/docker.md`](docs/development/docker.md)).
 
 ## Quick start
 
@@ -144,6 +168,7 @@ commands (`composer run dev`, test/lint gates).
 ```bash
 git clone <this-repo> laradogs && cd laradogs
 cp .env.example .env
+php artisan key:generate --show   # copy the output into APP_KEY in .env
 docker compose up --build
 ```
 

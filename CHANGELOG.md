@@ -6,6 +6,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 3: Finding Domain + Persistence + Lifecycle
+
+### Added
+
+- **Persistent Finding domain** (`app/Audit/Findings/`,
+  `app/Models/Audit/`): `Project`, `Scan` (immutable, with a
+  `ProjectProfile` JSON snapshot), `ScanAnalyzerExecution` (one row per
+  Phase 2 `AnalyzerExecution` — what makes auto-resolution safety
+  possible), `Finding` (stable cross-scan identity), `FindingOccurrence`
+  (per-scan evidence, never overwritten), `FindingStatusHistory`
+  (append-only lifecycle audit trail). All migrations use portable
+  Laravel primitives only — no vendor-specific enum types/JSON
+  operators/generated columns (ADR-0007).
+- `FindingCandidate` — the scanner-agnostic normalized observation DTO a
+  real analyzer (Phase 4+) will eventually produce; no real analyzer
+  produces one yet.
+- `Fingerprinter` — versioned (`v1`), deterministic, line-number-
+  independent identity from analyzer id + rule id + normalized file path
+    - normalized code snippet. The project is deliberately not part of the
+      hash — scoped instead via a `(project_id, fingerprint,
+fingerprint_version)` unique constraint.
+- `Severity` (`CRITICAL|HIGH|MEDIUM|LOW|INFO`), `Confidence`
+  (`HIGH|MEDIUM|LOW`, tracked independently of severity), `FindingStatus`
+  (`OPEN|CONFIRMED|RESOLVED|ACCEPTED_RISK|FALSE_POSITIVE|IGNORED` — no
+  separate `REGRESSED` status; a regression is a history event, not a
+  status a finding sits in), `ScanStatus`, `ActorType`.
+- `FindingLifecycleService` — the only code path allowed to change a
+  Finding's status; requires a reason for
+  `ACCEPTED_RISK`/`FALSE_POSITIVE`/`IGNORED`, writes append-only history.
+- `FindingIngestor` — find-or-create by fingerprint (locked, per-project),
+  records a `FindingOccurrence` per scan, reopens a `RESOLVED` finding
+  automatically on reappearance, and never lets re-observation silently
+  overturn a suppressed manual status.
+- `FindingReconciler` — the safety-critical auto-resolution sweep: a
+  finding is only ever auto-resolved when its own analyzer completed the
+  scan with `Passed` and it wasn't re-observed. An analyzer that didn't
+  run, wasn't applicable, was unavailable, failed, or timed out leaves its
+  findings completely untouched.
+- `EvidenceRedactor` — conservative, defense-in-depth masking (AWS-style
+  access key ids, obvious `SOMETHING_SECRET=value` assignments) applied to
+  persisted code snippets/context/metadata before they ever hit the
+  database.
+- `ScanRecorder` — ties Phase 1 (Discovery) + Phase 2 (Engine) + Phase 3
+  (persistence) together end-to-end: opens a scan, persists analyzer
+  executions, ingests candidates, reconciles, marks the scan
+  Completed/Failed.
+- `config/laradogs.php` — a placeholder `version` string recorded on every
+  scan (no release/tagging scheme exists yet).
+- 49 new Pest tests (`tests/Unit/Audit/Findings/`,
+  `tests/Feature/Audit/Findings/`) covering fingerprint determinism/line-
+  movement-resilience, redaction, ingestion (creation, reuse, line
+  movement, different rule/project), lifecycle transitions and required
+  reasons, auto-resolution safety (passed/failed/unavailable/timed-out/
+  not-run analyzers), suppressed-status persistence, regression/reopen,
+  and a dedicated no-target-execution test extending Phase 1's guarantee
+  through the full Discovery → Engine → Findings pipeline.
+
+### Notes
+
+- No real scanner integration (`composer audit`, `npm audit`, PHPStan,
+  Semgrep, Trivy, OSV-Scanner) — that's Phase 4. Every `FindingCandidate`
+  in this codebase is synthetic, used only in tests.
+- No dashboard, no MCP server, no CLI for findings (not required this
+  phase — domain services and tests are sufficient).
+- No new Composer/npm dependencies — ULIDs use Laravel's native
+  `HasUlids`.
+
 ## [Unreleased] — Phase 2: Audit Engine Foundation
 
 ### Added

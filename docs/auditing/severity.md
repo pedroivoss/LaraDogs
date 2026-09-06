@@ -1,6 +1,7 @@
 # Severity
 
-**Status: Planned** (Phase 3, alongside the [`Finding`](findings.md) model).
+**Status: Implemented** (Phase 3, as `App\Audit\Findings\Severity`,
+alongside the [`Finding`](findings.md) model).
 
 Severity answers: **if this finding is real, how bad is it?** It is
 independent of how sure LaraDogs is that the finding is real — see

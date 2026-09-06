@@ -2,11 +2,13 @@
 
 ## Status
 
-Proposed — this ADR records the intended shape of the `Finding` entity for
-future phases (Phase 3: Finding Domain + Persistence). **No `Finding` model,
-migration, or table exists yet in this codebase.** It is written now so that
-Phase 2/3 implementation has an agreed target instead of improvising the
-schema mid-flight.
+**Implemented (Phase 3).** This ADR's constraints (severity/confidence as
+independent axes; fingerprint not line-number-only) are the two decisions
+locked in here; [ADR-0010](ADR-0010-finding-identity-occurrences-and-lifecycle.md)
+resolves everything this ADR deliberately left open (the exact fingerprint
+algorithm/versioning, the Finding/Occurrence split, auto-resolution safety,
+history strategy) and is the source of truth for those details. Read this
+ADR for the original reasoning; read ADR-0010 for the implemented design.
 
 ## Context
 

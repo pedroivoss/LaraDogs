@@ -6,8 +6,8 @@
 | ----- | --------------------------------------- | ------------------------- |
 | 0     | Discovery / Architecture / Bootstrap    | **Complete**              |
 | 1     | Project Discovery (stack detection)     | **Complete**              |
-| 2     | Audit Engine Foundation                 | **Complete** (this phase) |
-| 3     | Finding Domain + Persistence            | Not started               |
+| 2     | Audit Engine Foundation                 | **Complete**              |
+| 3     | Finding Domain + Persistence            | **Complete** (this phase) |
 | 4     | Security / Dependency Scanners          | Not started               |
 | 5     | Bug / Quality Analysis                  | Not started               |
 | 6     | Performance Analysis                    | Not started               |
@@ -63,6 +63,27 @@ synthetic analyzers only, plus
 No real scanner integration, no `Finding` model, no persistence, no CLI
 (deliberately — see the Phase 2 report) — see the Phase 2 report for the
 full account.
+
+## What Phase 3 actually delivered
+
+The Finding domain and persistence (`app/Audit/Findings/`,
+`app/Models/Audit/`): `Project`/`Scan`/`ScanAnalyzerExecution`/`Finding`/
+`FindingOccurrence`/`FindingStatusHistory` migrations (portable across
+SQLite/MySQL/MariaDB/PostgreSQL), a versioned (`v1`), line-number-
+independent `Fingerprinter`, the `FindingCandidate` normalization DTO, a
+centralized `FindingLifecycleService` (reason-required suppressions,
+append-only history), `FindingIngestor` (find-or-create + occurrence +
+reopen-on-regression, suppressed statuses never auto-reverted),
+`FindingReconciler` (auto-resolution only when the owning analyzer
+completed `Passed` this scan — never on failure/timeout/unavailable/not
+run), a conservative `EvidenceRedactor`, and `ScanRecorder` tying Phases
+1+2+3 together end-to-end. 49 tests (including dedicated
+no-target-execution and auto-resolution-safety tests) against synthetic
+candidates only, plus
+[`findings-lifecycle.md`](../auditing/findings-lifecycle.md) +
+[ADR-0010](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md).
+No real scanner integration, no dashboard, no MCP server — see the Phase
+3 report for the full account.
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

@@ -1,9 +1,10 @@
 # Components (Current State)
 
 This describes what exists in the repository today — the Laravel starter
-kit foundation from Phase 0, plus Project Discovery (Phase 1) and the
-Audit Engine foundation (Phase 2) — not the full target audit
-architecture. See [`overview.md`](overview.md) for that.
+kit foundation from Phase 0, Project Discovery (Phase 1), the Audit
+Engine foundation (Phase 2), and the Finding domain/lifecycle (Phase 3) —
+not the full target audit architecture. See [`overview.md`](overview.md)
+for that.
 
 ## Backend (`app/`)
 
@@ -12,11 +13,12 @@ architecture. See [`overview.md`](overview.md) for that.
 | `app/Actions/Fortify/`           | Fortify action classes (user creation, password validation/reset) — starter-kit auth, not LaraDogs-specific.           |
 | `app/Audit/Discovery/`           | **Project Discovery Core** (Phase 1) — see below.                                                                      |
 | `app/Audit/Engine/`              | **Audit Engine foundation** (Phase 2) — see below.                                                                     |
+| `app/Audit/Findings/`            | **Finding domain services** (Phase 3) — see below.                                                                     |
 | `app/Http/Controllers/`          | Inertia page controllers and Fortify-adjacent controllers.                                                             |
 | `app/Http/Controllers/Settings/` | User settings pages (profile, password, appearance, two-factor, passkeys).                                             |
 | `app/Http/Middleware/`           | `HandleAppearance` (theme cookie) and `HandleInertiaRequests` (shared Inertia props).                                  |
 | `app/Http/Requests/`             | Form request validation classes.                                                                                       |
-| `app/Models/`                    | Currently only `User`.                                                                                                 |
+| `app/Models/`                    | `User` (starter-kit); `Audit/` — persistence models (Phase 3) — see below.                                             |
 | `app/Providers/`                 | `AppServiceProvider`, Fortify service provider bindings.                                                               |
 | `app/Console/Commands/`          | `InspectProjectCommand` (`laradogs:inspect`) — thin CLI adapter over Project Discovery, no detection logic of its own. |
 
@@ -39,7 +41,9 @@ the decision behind _how_ it's safe to run against untrusted code:
 | `Profile/`                         | `ProjectProfile` and its sections (`BackendProfile`, `FrontendProfile`, `TestingProfile`, `InfrastructureProfile`, `DatabaseProfile`), `ProfileBuilder`, and the `ProjectType`/`DatabaseDriver`/`PackageManager` enums. |
 | `Support/`                         | `Detection`/`VersionDetection` value objects, `DetectionStatus` enum, `DiscoveryIssue`.                                                                                                                                 |
 
-No `Finding`/`Scan` model or persistence exists yet — that's still Phase 3.
+Discovery itself has no `Finding`/`Scan` model or persistence — that's a
+separate concern, implemented under `app/Audit/Findings/`/
+`app/Models/Audit/` (Phase 3) — see below.
 
 ### Audit Engine (`app/Audit/Engine/`)
 
@@ -62,6 +66,35 @@ the decision behind the Analyzer contract and process-execution boundary:
 
 No real `Analyzer` is registered anywhere in production; synthetic ones
 for exercising the engine live under `tests/Support/Engine/Analyzers/`.
+
+### Findings (`app/Audit/Findings/`, `app/Models/Audit/`)
+
+The persistent domain: a `Finding`'s stable identity, its per-scan
+`FindingOccurrence` evidence, and the lifecycle service that safely
+auto-resolves/reopens findings. Full detail, security boundary, and
+auto-resolution safety:
+[`../auditing/findings-lifecycle.md`](../auditing/findings-lifecycle.md);
+the decision behind identity/fingerprinting/lifecycle:
+[ADR-0010](decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md).
+
+| Path                                                                                              | Purpose                                                                                              |
+| ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `app/Models/Audit/Project.php`                                                                    | Something auditable registered with LaraDogs.                                                        |
+| `app/Models/Audit/Scan.php`                                                                       | One immutable audit run — `ProjectProfile` snapshot, status, timing.                                 |
+| `app/Models/Audit/ScanAnalyzerExecution.php`                                                      | Persisted `AnalyzerExecution` (Phase 2) per scan — what auto-resolution safety depends on.           |
+| `app/Models/Audit/Finding.php`                                                                    | The stable, cross-scan logical identity of an issue.                                                 |
+| `app/Models/Audit/FindingOccurrence.php`                                                          | Evidence observed for a Finding in one specific scan.                                                |
+| `app/Models/Audit/FindingStatusHistory.php`                                                       | Append-only lifecycle transition audit trail.                                                        |
+| `Findings/FindingCandidate.php`                                                                   | The scanner-agnostic "an analyzer observed this" DTO — the seam a real Phase 4+ analyzer targets.    |
+| `Findings/Severity.php`, `Confidence.php`, `FindingStatus.php`, `ScanStatus.php`, `ActorType.php` | Domain enums.                                                                                        |
+| `Findings/Fingerprint/Fingerprinter.php`                                                          | Versioned (`v1`), line-number-independent identity computation.                                      |
+| `Findings/Redaction/EvidenceRedactor.php`                                                         | Defense-in-depth secret masking for persisted evidence.                                              |
+| `Findings/Lifecycle/FindingLifecycleService.php`                                                  | The only code path allowed to change a Finding's status.                                             |
+| `Findings/Ingestion/FindingIngestor.php`, `FindingReconciler.php`, `ScanRecorder.php`             | Find-or-create + occurrence recording, safe auto-resolution sweep, and the Phase 1+2+3 tie-together. |
+
+No real scanner produces a `FindingCandidate` yet — that's Phase 4.
+`config/laradogs.php` holds a placeholder `version` string recorded on
+every scan (no release/tagging scheme exists yet).
 
 ## Frontend (`resources/js/`)
 
@@ -101,22 +134,30 @@ Phase 7.
   [ADR-0007](decisions/ADR-0007-database-agnostic-persistence.md).
   The current Docker quick-start image only bundles the `pdo_sqlite`
   extension — see [`../development/docker.md`](../development/docker.md).
-- Migrations present are all starter-kit ones: users, cache, jobs,
-  passkeys, two-factor columns. **No audit-domain migrations exist.**
+- Migrations: starter-kit ones (users, cache, jobs, passkeys, two-factor
+  columns) plus the Phase 3 audit-domain schema — `projects`, `scans`,
+  `scan_analyzer_executions`, `findings`, `finding_occurrences`,
+  `finding_status_histories`. All portable Laravel primitives (no
+  vendor-specific enum types/JSON operators/generated columns) — see
+  [`../auditing/findings-lifecycle.md`](../auditing/findings-lifecycle.md#database-portability).
 
 ## Testing
 
-- Pest, under `tests/Feature` and `tests/Unit`. Starter-kit auth flows
-  (login, registration, password reset, email verification, two-factor,
-  passkeys, settings) — 39 tests from Phase 0 — Project Discovery
+- Pest, under `tests/Feature` and `tests/Unit`. Starter-kit auth flows —
+  39 tests from Phase 0 — Project Discovery
   (`tests/Unit/Audit/Discovery/`, `tests/Feature/Console/`) — 26 tests
-  from Phase 1 — and the Audit Engine (`tests/Unit/Audit/Engine/`,
-  `tests/Feature/Audit/Engine/`) — 31 tests from Phase 2, including
-  dedicated no-target-execution and no-shell-execution guarantee tests.
-  96 tests total, all passing. See
+  from Phase 1 — the Audit Engine (`tests/Unit/Audit/Engine/`,
+  `tests/Feature/Audit/Engine/`) — 31 tests from Phase 2 — and the
+  Finding domain (`tests/Unit/Audit/Findings/`,
+  `tests/Feature/Audit/Findings/`) — 49 tests from Phase 3, covering
+  ingestion, fingerprinting, lifecycle, and auto-resolution safety. 145
+  tests total, all passing. See
   [`../development/testing.md`](../development/testing.md).
 - `tests/Support/Engine/Analyzers/` — synthetic `Analyzer` implementations
   (never autoloaded in production) used only by the Audit Engine's tests.
+- `tests/Support/Findings/SyntheticCandidates.php` — synthetic
+  `FindingCandidate`s (SQL injection, N+1, vulnerable dependency, config
+  issue) used only by the Finding domain's tests — no real scanner exists.
 - `tests/Fixtures/discovery/` — small, synthetic project fixtures (never
   real projects) used only by Discovery's tests.
 

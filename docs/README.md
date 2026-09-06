@@ -5,8 +5,9 @@ This is the documentation index for LaraDogs. It is organized so that
 auditing will work" (auditing), and "how it connects to other tools"
 (integrations) are separate concerns.
 
-**Status: Early Development.** Most of what LaraDogs is _for_ — scanners,
-findings, history, the dashboard, MCP — does not exist in code yet. See
+**Status: Early Development.** Most of what LaraDogs is _for_ — real
+scanners, the dashboard, MCP — does not exist in code yet, though stack
+detection, orchestration, and the Finding domain/lifecycle now do. See
 [`roadmap/phases.md`](roadmap/phases.md) for what phase we're in and
 [`../README.md`](../README.md) for the Implemented/Planned split.
 
@@ -46,15 +47,18 @@ findings, history, the dashboard, MCP — does not exist in code yet. See
   (Phase 2), foundation only.** The Analyzer contract, applicability vs.
   availability, planning, execution, and result normalization — exercised
   with synthetic analyzers. No real scanner integration exists yet.
-- The rest of `auditing/` describes the **planned** domain model (Phase
-  3+) that the engine will feed into. None of it is implemented yet — it
-  exists so that Phase 3+ work has an agreed target instead of improvising
-  mid-implementation.
-    - [`auditing/overview.md`](auditing/overview.md)
-    - [`auditing/findings.md`](auditing/findings.md)
+- [`auditing/findings-lifecycle.md`](auditing/findings-lifecycle.md) —
+  **Implemented (Phase 3).** Finding identity/occurrences, fingerprinting,
+  lifecycle, and auto-resolution safety — persistent, tested, still fed
+  only by synthetic observations (no real scanner yet).
+    - [`auditing/findings.md`](auditing/findings.md) — the `Finding`/
+      `FindingOccurrence` field reference.
     - [`auditing/severity.md`](auditing/severity.md)
     - [`auditing/confidence.md`](auditing/confidence.md)
     - [`auditing/suppressions.md`](auditing/suppressions.md)
+- [`auditing/overview.md`](auditing/overview.md) describes the still
+  **planned** rest of the pipeline (Phase 4+: real scanners, correlation,
+  Laravel-aware rules).
 
 ## Integrations
 

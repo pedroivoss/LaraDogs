@@ -4,11 +4,13 @@
 
 **Status: Early Development.** This repository currently contains a
 bootstrapped Laravel application (Phase 0), a static project stack
-detector (Phase 1), and an analyzer orchestration foundation exercised
-only with synthetic analyzers (Phase 2) — no security/quality auditing
-functionality yet. If you're looking for a working security scanner, this
-isn't one yet — see [Current Capabilities](#current-capabilities) for
-exactly what exists today.
+detector (Phase 1), an analyzer orchestration foundation exercised only
+with synthetic analyzers (Phase 2), and a persistent Finding domain/
+lifecycle fed only by synthetic observations (Phase 3) — **no real
+scanner produces a finding automatically yet.** If you're looking for a
+working security scanner, this isn't one yet — see
+[Current Capabilities](#current-capabilities) for exactly what exists
+today.
 
 ## The problem
 
@@ -115,6 +117,16 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   architecture, **not scanners**: `composer audit`/`npm audit`/PHPStan/
   Semgrep/etc. still don't run. See
   [`docs/auditing/audit-engine.md`](docs/auditing/audit-engine.md).
+- **Finding domain & lifecycle** (Phase 3) — a persistent `Project`/
+  `Scan`/`Finding`/`FindingOccurrence` schema with a versioned,
+  line-number-independent fingerprint, full status lifecycle (open →
+  confirmed/resolved/accepted-risk/false-positive/ignored, with
+  append-only history), and safe auto-resolution (a finding is only ever
+  auto-resolved when its own analyzer ran successfully and stopped
+  reporting it — never on failure/timeout/unavailable). **Still fed only
+  by synthetic observations in tests — no real scanner exists to populate
+  it automatically.** See
+  [`docs/auditing/findings-lifecycle.md`](docs/auditing/findings-lifecycle.md).
 - A Laravel 13 application with React + Inertia (official starter kit),
   Fortify-based authentication, and a single authenticated dashboard page
   (Phase 0).
@@ -127,14 +139,16 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
 - The documentation and architectural decisions this README links to.
 
 **Not yet implemented** (everything that makes LaraDogs actually useful
-as a _security/quality tool_, beyond stack detection and orchestration
-architecture):
+as a _security/quality tool_, beyond stack detection, orchestration
+architecture, and the Finding domain):
 
 - Any real scanner integration (`composer audit`, `npm audit`, PHPStan/
   Larastan, ESLint, Semgrep, OSV-Scanner, Trivy) — security scanning, bug
-  detection, performance analysis.
-- The `Finding`/`Scan` domain model, Laravel-aware rules, history/
-  comparison, quality gates.
+  detection, performance analysis. Nothing produces a real `Finding` yet.
+- Laravel-aware rules, correlation/deduplication across scanners, a
+  dedicated scan-to-scan comparison **report** (the underlying
+  regression/reopen lifecycle exists; a NEW/RESOLVED/UNCHANGED/REGRESSED
+  report view doesn't), quality gates.
 - The real Dashboard (findings/scans/rules/reports/quality
   gates/integrations/MCP access/system/updates), the MCP server, MCP
   credentials, Git/CI continuous monitoring.
@@ -231,10 +245,11 @@ calling agent does that, using context LaraDogs provides. See
 
 ## Roadmap
 
-Phase 0 (bootstrap), Phase 1 (Project Discovery), and Phase 2 (Audit
-Engine Foundation) are complete. Phases 3–13 (Finding Domain + Persistence
-through Hardening/Release) are not started. Full list, current position,
-and items deliberately deferred:
+Phase 0 (bootstrap), Phase 1 (Project Discovery), Phase 2 (Audit Engine
+Foundation), and Phase 3 (Finding Domain + Persistence) are complete.
+Phases 4–13 (Security/Dependency Scanners through Hardening/Release) are
+not started. Full list, current position, and items deliberately
+deferred:
 [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
 
 ## Contributing

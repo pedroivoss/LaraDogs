@@ -57,16 +57,23 @@ ADR-0004) is recorded now with zero implementation, so Phase 4's first
 real analyzer has a stable contract instead of reaching for
 `shell_exec()` inline.
 
-## Phase 3 — Finding Domain + Persistence
+## Phase 3 — Finding Domain + Persistence ✅ Complete
 
-Implement the `Finding` model per ADR-0003, the `Scan` model per ADR-0005,
-migrations, and the normalization layer that turns Phase 2's raw scanner
-output into `Finding` records. Fingerprinting strategy is decided here
-against real scanner output, constrained by ADR-0003 (not line-number-only).
-Migrations must follow the portability constraints in
+Implemented the `Project`/`Scan`/`ScanAnalyzerExecution`/`Finding`/
+`FindingOccurrence`/`FindingStatusHistory` schema, the `FindingCandidate`
+normalization DTO, a versioned (`v1`) line-number-independent fingerprint,
+and the full lifecycle (statuses, auto-resolution safety, regression/
+reopen) — see
+[`../auditing/findings-lifecycle.md`](../auditing/findings-lifecycle.md)
+and [ADR-0010](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md),
+which resolves what ADR-0003/ADR-0005 deliberately left open.
+
+**No real scanner integration exists yet** — everything is exercised with
+synthetic `FindingCandidate`s (Phase 4 supplies the first real producer of
+one). Migrations use only portable Laravel primitives, per
 [ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md)
-(SQLite/MySQL/MariaDB/PostgreSQL), not be authored/tested against SQLite
-alone.
+(SQLite/MySQL/MariaDB/PostgreSQL) — no vendor-specific enum types, JSON
+operators, generated columns, or partial indexes.
 
 ## Phase 4 — Security / Dependency Scanners
 

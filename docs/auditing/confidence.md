@@ -1,6 +1,7 @@
 # Confidence
 
-**Status: Planned** (Phase 3, alongside the [`Finding`](findings.md) model).
+**Status: Implemented** (Phase 3, as `App\Audit\Findings\Confidence`,
+alongside the [`Finding`](findings.md) model).
 
 Confidence answers: **how sure is LaraDogs that this finding is a real
 issue** (as opposed to a false positive)? It is tracked separately from

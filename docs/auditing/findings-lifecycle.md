@@ -1,0 +1,247 @@
+# Findings: Lifecycle, Occurrences, and Persistence
+
+**Status: Implemented (Phase 3).** This documents what actually exists:
+persistent `Project`/`Scan`/`Finding`/`FindingOccurrence`/
+`FindingStatusHistory`/`ScanAnalyzerExecution` records, ingestion, and
+auto-resolution. **No real scanner produces this data yet** — everything
+here is exercised with synthetic `FindingCandidate`s in tests. See
+[ADR-0010](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md)
+for the design decisions behind all of this, and [`findings.md`](findings.md)
+for the `Finding` field reference.
+
+## Finding vs. Occurrence
+
+- **Finding** (`findings` table) — the stable, cross-scan **logical
+  identity** of an issue: which rule/analyzer, category, severity,
+  confidence, descriptive text, lifecycle status, first/last seen. One row
+  per distinct issue, however many times it's been re-detected.
+- **FindingOccurrence** (`finding_occurrences` table) — the **evidence
+  observed in one specific scan**: file path, line range, code snippet,
+  context, raw evidence, rule/analyzer version. One row per (finding,
+  scan) pair. Old evidence is never overwritten — if a scan re-observes a
+  finding, it gets its own occurrence row, so "the code moved from line 42
+  to line 58 between scan #10 and #11" stays queryable, not just the
+  latest position.
+
+## Identity: fingerprinting
+
+A `Finding`'s identity is a `fingerprint` (SHA-256 hex) plus a
+`fingerprint_version` (currently `v1`), computed by
+`App\Audit\Findings\Fingerprint\Fingerprinter` from:
+
+```
+analyzer id + rule id + normalized file path + normalized code snippet
+```
+
+**Deliberately excluded:** line numbers (they shift on unrelated edits —
+identity must survive that), and severity/confidence/title (metadata about
+the issue, not what makes it the same issue — these are updated on every
+re-observation without changing identity). **Deliberately not in the
+hash:** the project — matching is scoped to `project_id` via the query and
+a database unique constraint on `(project_id, fingerprint,
+fingerprint_version)`, so the same fingerprint in two different projects
+is (correctly) two different `Finding` rows.
+
+Normalization (`Fingerprinter`'s private methods) is a shallow,
+deterministic text transform — line-ending normalization and whitespace
+collapsing — not semantic/AST analysis. Two snippets that differ only in
+formatting/reindentation fingerprint identically; two snippets with
+actually different code do not.
+
+**Versioned from day one.** `fingerprint_version` is stored on every
+`Finding` specifically so a smarter future algorithm (v2+) can be
+introduced as a disjoint identity space, never silently reinterpreting or
+merging into existing history.
+
+**Not a primary key.** `Finding.id` is the real primary key; the
+fingerprint is used only to find-or-create a match. See
+[ADR-0010](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md#finding-vs-occurrence)
+for why a hash collision degrades gracefully rather than corrupting
+anything.
+
+## Ingestion
+
+`App\Audit\Findings\Ingestion\FindingIngestor::ingest(Project, Scan,
+FindingCandidate)`, per observed candidate:
+
+1. Compute the fingerprint.
+2. Look up an existing `Finding` scoped to `(project_id, fingerprint,
+fingerprint_version)` — locked (`lockForUpdate()`) inside a transaction,
+   so two concurrent scans for the same project can't both decide the
+   fingerprint is new and insert a duplicate. (A no-op on SQLite — its
+   grammar compiles the lock clause to nothing, relying instead on
+   SQLite's own connection-level write serialization — and a real
+   row-level lock on MySQL/PostgreSQL.)
+3. **Not found** → create a new `Finding` (status `OPEN`), record a
+   "created" history entry, `first_seen_at`/`last_seen_at` = now.
+4. **Found, status `RESOLVED`** → reopen it (see
+   [Regression](#regression--reopening) below).
+5. **Found, any other status** → status untouched (see
+   [Manual statuses survive re-observation](#manual-statuses-survive-re-observation)).
+6. Update descriptive fields (title/severity/confidence/description/etc.)
+   to the latest observation's values, and `last_seen_scan_id`/
+   `last_seen_at`.
+7. Create or update the `FindingOccurrence` for `(finding_id, scan_id)` —
+   evidence text is redacted first (see [Redaction](#redaction)).
+
+## Severity and Confidence
+
+Independent axes (unchanged from ADR-0003):
+
+- `Severity` (`CRITICAL|HIGH|MEDIUM|LOW|INFO`) — how bad, if real.
+- `Confidence` (`HIGH|MEDIUM|LOW`) — how sure LaraDogs is it's real at all.
+
+A finding can be `Severity::Critical` + `Confidence::Low` (a heuristic
+flags something catastrophic-if-true but unconfirmed) just as validly as
+`Severity::Low` + `Confidence::High` (a precisely-detected, low-impact
+issue). Confidence is a fixed three-level enum rather than a numeric
+score — without calibrated data from real scanners yet, a numeric scale
+would only imply a precision this project can't back up.
+
+## Lifecycle
+
+Statuses: `OPEN | CONFIRMED | RESOLVED | ACCEPTED_RISK | FALSE_POSITIVE |
+IGNORED` (`App\Audit\Findings\FindingStatus`). Every transition — manual
+or automatic — goes through
+`App\Audit\Findings\Lifecycle\FindingLifecycleService::transition()`, the
+only code path allowed to change a Finding's status. It:
+
+- Requires a non-empty `$reason` for transitions **into**
+  `ACCEPTED_RISK`/`FALSE_POSITIVE`/`IGNORED` (throws
+  `InvalidArgumentException` otherwise) — optional for `OPEN`/`CONFIRMED`/
+  `RESOLVED`.
+- Writes one `FindingStatusHistory` row per transition (`previous_status`
+  null only for the very first, creation, row), inside the same
+  transaction as the status update.
+
+### Manual statuses survive re-observation
+
+Re-detecting a finding that's `ACCEPTED_RISK`/`FALSE_POSITIVE`/`IGNORED`
+records a new `FindingOccurrence` (the evidence isn't hidden) but **does
+not** change its status. These are deliberate human judgments about a
+finding that may well still be present — re-detecting it doesn't
+invalidate that judgment. Only a human (or a future explicit policy) moves
+a finding out of a suppressed status.
+
+### Auto-resolution safety
+
+**The single most important safety rule in this domain.** A finding may
+be auto-resolved ONLY when both are true:
+
+1. Its `analyzer_id` completed the scan with `ExecutionStatus::Passed`
+   (checked against `scan_analyzer_executions` for that scan — see
+   [Scan Analyzer Executions](#scan-analyzer-executions) below).
+2. It received no new occurrence in that scan.
+
+`App\Audit\Findings\Ingestion\FindingReconciler::reconcile(Project, Scan)`
+runs this after all of a scan's candidates are ingested: it computes which
+analyzers completed with `Passed` this scan, then auto-resolves every
+`OPEN`/`CONFIRMED` finding belonging to one of those analyzers that wasn't
+re-observed. Everything else — findings whose analyzer wasn't part of this
+scan, was `NotApplicable`, `Unavailable`, `Failed`, `TimedOut`, or
+`Skipped` — is left **completely untouched**, no matter how many scans
+pass without them being checked. "Confirmed absent" and "not checked" must
+never be confused; that's the entire reason `scan_analyzer_executions`
+exists.
+
+### Regression / reopening
+
+`RESOLVED` is not a permanent state a finding can only leave manually — if
+`FindingIngestor` observes a fingerprint again whose `Finding` is currently
+`RESOLVED`, it transitions back to `OPEN` automatically, with a history
+row recording `previous_status=resolved, new_status=open` and a
+system-authored reason ("Reopened automatically: reappeared in scan ...
+after being marked resolved."). There is no separate `REGRESSED` status —
+the regression is exactly that history row; a report can always derive
+"this was a regression" from `previous_status=resolved &&
+new_status=open` without a dedicated column.
+
+## Scan Analyzer Executions
+
+`scan_analyzer_executions` persists one row per
+`App\Audit\Engine\Execution\AnalyzerExecution` (Phase 2) for a given scan
+— analyzer id/name/category, final `ExecutionStatus`, summary,
+diagnostics, duration. This is not incidental bookkeeping: it is the data
+`FindingReconciler` depends on to know whether auto-resolution is safe.
+Without it, "this finding didn't reappear" would be indistinguishable from
+"this finding's analyzer never even ran."
+
+## Diagnostics vs. Findings (recap)
+
+An `AnalyzerDiagnostic` (Phase 2) describes a problem with the analyzer's
+own execution (missing binary, malformed output, internal error) —
+persisted on `scan_analyzer_executions.diagnostics`. A `Finding` describes
+a problem the analyzer found in the analyzed project. These have never
+been, and are not now, the same concept.
+
+## Redaction
+
+`App\Audit\Findings\Redaction\EvidenceRedactor` is applied to
+`code_snippet`/`context_code` and to string values in a candidate's
+`metadata` (one level deep) before anything is persisted — recognizing an
+AWS-style access key id and an obvious `SOMETHING_SECRET=value`-shaped
+assignment, masking the value while leaving structure intact (e.g.
+`AWS_SECRET_ACCESS_KEY=ABCD****************WXYZ`). **This is
+defense-in-depth, not a secret scanner** — it does not attempt entropy
+analysis or a comprehensive pattern list, and a real secret-detection
+capability is future work. Ordinary code is left untouched; the pattern
+set is deliberately conservative to avoid false positives mangling
+legitimate evidence.
+
+## Database portability
+
+All tables use portable Laravel migration primitives only —
+`$table->ulid()`, `$table->string()`/`text()`/`json()`, portable
+`foreignId()->constrained()` — no vendor-specific enum types, JSON
+operators, generated columns, or partial indexes (per
+[ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md)).
+Every enum (`Severity`, `Confidence`, `FindingStatus`, `ScanStatus`,
+`ActorType`, plus Phase 2's `AnalyzerCategory`/`ExecutionStatus`) is stored
+as a plain string column and cast to a PHP backed enum by Eloquent —
+readable by any of LaraDogs' four supported databases without a
+database-level enum type. `project_profile`/`environment`/
+`findings_summary`/`diagnostics`/`evidence`/`references`/`metadata` use
+Laravel's portable `json()` column and are treated purely as storage —
+nothing queries into their internal structure with database-specific JSON
+operators.
+
+`lockForUpdate()` (used during ingestion) compiles to a real row lock on
+MySQL/PostgreSQL and a documented no-op on SQLite (whose grammar compiles
+the lock clause to nothing) — safe on all three because SQLite already
+serializes writers at the connection/transaction level.
+
+## Concurrency limits
+
+Two concurrent scans for the same project ingesting the same fingerprint
+are protected by `lockForUpdate()` plus the `(project_id, fingerprint,
+fingerprint_version)` unique constraint. This is not a distributed-cluster
+solution — it assumes a single database connection/transaction boundary
+per ingestion, which is what LaraDogs' current single-process model
+provides. Nothing here has been tested against, or is claimed to work
+under, multi-node concurrent writers.
+
+## IDs
+
+Every `Project`/`Scan`/`Finding` has both an internal auto-incrementing
+`id` (never exposed) and a `public_id` (ULID, via Laravel's native
+`HasUlids` — no new dependency) suitable for future external references
+(MCP `get_finding(id)`, a dashboard URL). A human-friendly sequential
+display key (e.g. `SEC-0042`) is deliberately **not** built now — it would
+need a counter scoped somehow (per-project? per-category? global?) that
+this phase has no real requirement to design yet; `public_id` is the only
+external identifier today, and a display key can be added later without
+touching it.
+
+## Not built in this phase
+
+- Any real scanner/analyzer producing `FindingCandidate`s (Phase 4+).
+- A `Finding` display/detail UI, scan comparison view, or any dashboard
+  surface (Phase 7+) — though nothing here was denormalized prematurely
+  to anticipate one.
+- The MCP server (Phase 9) — `public_id` exists so `get_finding`/
+  `list_findings`/`get_scan`-shaped MCP tools have something stable to key
+  off later.
+- A human-friendly sequential display key, richer fail-fast/per-analyzer
+  timeout policy (Phase 2 already covers the base case), a real secret
+  scanner, and multi-connection database evidence — see
+  [ADR-0010](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md#consequences).

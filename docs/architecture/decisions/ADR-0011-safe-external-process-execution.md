@@ -4,6 +4,36 @@
 
 Accepted (Phase 4).
 
+**Note (Phase 4.2.1):** this ADR's "environment allowlist" and "argv-only"
+decisions govern what LaraDogs' OWN process leaks into a child process —
+they do not, by themselves, constrain what a CHILD PROCESS's own
+config-file mechanism (npm's `.npmrc`, read automatically from the
+target's working directory) can do once running, such as routing its own
+network calls through a proxy declared in that file. Phase 4.2.1
+confirmed empirically that this gap was real for `npm audit`
+specifically (a target `.npmrc` `proxy=`/`https-proxy=` setting DID
+reroute an otherwise-correctly-`--registry=`-pinned request through a
+locally-controlled test listener) and closed it with explicit,
+analyzer-level CLI flags (`--proxy=false --https-proxy=false
+--strict-ssl=true`, or an operator-configured trusted proxy) rather than
+a new `ProcessRunner`-level primitive — this class of tool-specific
+config-file trust boundary is decided to belong to each analyzer, the
+same way argv construction already does, not to the shared
+`ProcessRunner` contract. A companion, narrower finding — that a
+target's OWN scope-specific `@scope:registry=` override does NOT need
+this treatment, because `npm audit`'s own implementation never queries a
+per-scope registry for advisory data in the first place (verified against
+source and by reproduction with a real local listener) — is recorded in
+detail in
+[`docs/auditing/analyzers/npm-audit.md`](../../auditing/analyzers/npm-audit.md#9-npm-configuration-security),
+not here, since it is npm-specific behavior, not a new decision about
+this ADR's own scope.
+
+**Note (Phase 4.2):** the second real analyzer, `NpmAuditAnalyzer`,
+reused `SymfonyProcessRunner` and this ADR's decisions unchanged — no
+amendment was needed at the time. (See the Phase 4.2.1 note above for the
+one gap that research later surfaced.)
+
 **Note (Phase 4.1):** the Docker "runtime" image gap this ADR's
 Consequences section flagged (no `composer` binary present) was closed —
 the pinned Composer binary is now reused from the `builder` stage, and

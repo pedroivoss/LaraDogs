@@ -8,8 +8,8 @@ auditing will work" (auditing), and "how it connects to other tools"
 **Status: Early Development.** Most of what LaraDogs is _for_ — the
 dashboard, MCP, most scanners — does not exist in code yet, though stack
 detection, orchestration, the Finding domain/lifecycle, real process
-execution, and one real scanner (`composer audit`) now do. See
-[`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in and
+execution, and two real scanners (`composer audit`, `npm audit`) now do.
+See [`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in and
 [`../README.md`](../README.md) for the Implemented/Planned split.
 
 ## Architecture
@@ -45,19 +45,23 @@ execution, and one real scanner (`composer audit`) now do. See
   what it detects, its security model, and CLI usage. Not auditing: no
   scanners run, no `Finding` is produced.
 - [`auditing/audit-engine.md`](auditing/audit-engine.md) — **Implemented
-  (Phase 2 foundation; Phase 4 real analyzer/process execution).** The
-  Analyzer contract, applicability vs. availability, planning, execution,
-  and result normalization — now running one real analyzer
-  (`composer-audit`) through a real `ProcessRunner`.
+  (Phase 2 foundation; Phase 4/4.2 real analyzers/process execution).**
+  The Analyzer contract, applicability vs. availability, planning,
+  execution, and result normalization — now running two real analyzers
+  (`composer-audit`, `npm-audit`) through the same real `ProcessRunner`.
 - [`auditing/analyzers/composer-audit.md`](auditing/analyzers/composer-audit.md)
-  — **Implemented (Phase 4).** The first real scanner: `composer audit`,
-  its safety model, JSON schema, severity/confidence/coverage policy, and
-  known limitations.
+  — **Implemented (Phase 4, Docker-hardened Phase 4.1).** The first real
+  scanner: `composer audit`, its safety model, JSON schema,
+  severity/confidence/coverage policy, and known limitations.
+- [`auditing/analyzers/npm-audit.md`](auditing/analyzers/npm-audit.md) —
+  **Implemented (Phase 4.2).** The second real scanner: `npm audit`, its
+  registry/config security model (the phase's central finding), JSON
+  schema, severity/confidence/coverage policy, and known limitations.
 - [`auditing/findings-lifecycle.md`](auditing/findings-lifecycle.md) —
   **Implemented (Phase 3).** Finding identity/occurrences, fingerprinting,
   lifecycle, and auto-resolution safety — persistent, tested, now fed by
-  one real analyzer's observations (Phase 4) alongside synthetic ones in
-  tests.
+  two real analyzers' observations (Phase 4, Phase 4.2) alongside
+  synthetic ones in tests.
     - [`auditing/findings.md`](auditing/findings.md) — the `Finding`/
       `FindingOccurrence` field reference.
     - [`auditing/severity.md`](auditing/severity.md)

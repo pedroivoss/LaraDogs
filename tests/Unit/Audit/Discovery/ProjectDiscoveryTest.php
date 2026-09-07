@@ -169,3 +169,41 @@ it('produces deterministic output across repeated runs against the same project'
 
     expect(json_encode($a))->toBe(json_encode($b));
 });
+
+// --- npm lockfile detection (Phase 4.2 — needed by NpmAuditAnalyzer's applicability) ---
+
+it('detects an npm lockfile from package-lock.json', function () {
+    $profile = discoverFixture('laravel-inertia-react-ts')->profile;
+
+    expect($profile->frontend->npmLockfile->status)->toBe(DetectionStatus::Detected);
+    expect($profile->frontend->packageManager)->toBe(PackageManager::Npm);
+});
+
+it('detects an npm lockfile from npm-shrinkwrap.json, equally to package-lock.json', function () {
+    $profile = discoverFixture('npm-shrinkwrap-only')->profile;
+
+    expect($profile->frontend->npmLockfile->status)->toBe(DetectionStatus::Detected);
+    expect($profile->frontend->packageManager)->toBe(PackageManager::Npm);
+});
+
+it('does not treat yarn.lock as an npm lockfile', function () {
+    $profile = discoverFixture('laravel-inertia-vue')->profile;
+
+    expect($profile->frontend->packageManager)->toBe(PackageManager::Yarn);
+    expect($profile->frontend->npmLockfile->status)->toBe(DetectionStatus::NotDetected);
+});
+
+it('does not treat pnpm-lock.yaml as an npm lockfile', function () {
+    $profile = discoverFixture('pnpm-only')->profile;
+
+    expect($profile->frontend->packageManager)->toBe(PackageManager::Pnpm);
+    expect($profile->frontend->npmLockfile->status)->toBe(DetectionStatus::NotDetected);
+});
+
+it('detects package.json without any lockfile as not having an npm lockfile', function () {
+    $profile = discoverFixture('package-json-without-lock')->profile;
+
+    expect($profile->frontend->node->status)->toBe(DetectionStatus::Detected);
+    expect($profile->frontend->packageManager)->toBeNull();
+    expect($profile->frontend->npmLockfile->status)->toBe(DetectionStatus::NotDetected);
+});

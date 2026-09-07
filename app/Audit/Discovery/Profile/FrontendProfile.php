@@ -10,6 +10,7 @@ final readonly class FrontendProfile implements JsonSerializable
     public function __construct(
         public Detection $node,
         public ?PackageManager $packageManager,
+        public Detection $npmLockfile,
         public Detection $vite,
         public Detection $react,
         public Detection $vue,
@@ -26,6 +27,7 @@ final readonly class FrontendProfile implements JsonSerializable
         return [
             'node' => $this->node,
             'package_manager' => $this->packageManager?->value,
+            'npm_lockfile' => $this->npmLockfile,
             'vite' => $this->vite,
             'react' => $this->react,
             'vue' => $this->vue,

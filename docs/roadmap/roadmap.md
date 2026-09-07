@@ -2,22 +2,22 @@
 
 ## Phases
 
-| Phase | Name                                    | Status                                                              |
-| ----- | --------------------------------------- | ------------------------------------------------------------------- |
-| 0     | Discovery / Architecture / Bootstrap    | **Complete**                                                        |
-| 1     | Project Discovery (stack detection)     | **Complete**                                                        |
-| 2     | Audit Engine Foundation                 | **Complete**                                                        |
-| 3     | Finding Domain + Persistence            | **Complete**                                                        |
-| 4     | Security / Dependency Scanners          | **In progress** (`composer audit` done; other scanners not started) |
-| 5     | Bug / Quality Analysis                  | Not started                                                         |
-| 6     | Performance Analysis                    | Not started                                                         |
-| 7     | Dashboard                               | Not started                                                         |
-| 8     | History / Comparison / Quality Gates    | Not started                                                         |
-| 9     | MCP                                     | Not started                                                         |
-| 10    | Authentication / MCP Credentials        | Not started                                                         |
-| 11    | Git Integration / Continuous Monitoring | Not started                                                         |
-| 12    | CI / GitHub Action                      | Not started                                                         |
-| 13    | Hardening / Release                     | Not started                                                         |
+| Phase | Name                                    | Status                                                                            |
+| ----- | --------------------------------------- | --------------------------------------------------------------------------------- |
+| 0     | Discovery / Architecture / Bootstrap    | **Complete**                                                                      |
+| 1     | Project Discovery (stack detection)     | **Complete**                                                                      |
+| 2     | Audit Engine Foundation                 | **Complete**                                                                      |
+| 3     | Finding Domain + Persistence            | **Complete**                                                                      |
+| 4     | Security / Dependency Scanners          | **In progress** (`composer audit` + `npm audit` done; other scanners not started) |
+| 5     | Bug / Quality Analysis                  | Not started                                                                       |
+| 6     | Performance Analysis                    | Not started                                                                       |
+| 7     | Dashboard                               | Not started                                                                       |
+| 8     | History / Comparison / Quality Gates    | Not started                                                                       |
+| 9     | MCP                                     | Not started                                                                       |
+| 10    | Authentication / MCP Credentials        | Not started                                                                       |
+| 11    | Git Integration / Continuous Monitoring | Not started                                                                       |
+| 12    | CI / GitHub Action                      | Not started                                                                       |
+| 13    | Hardening / Release                     | Not started                                                                       |
 
 No changes were made to this phase list during Phase 0 — the brief's
 ordering (foundation → discovery → engine → domain model → scanners →
@@ -120,6 +120,78 @@ No other scanner (`npm audit`, Semgrep, OSV-Scanner, Trivy, PHPStan/
 ESLint/Pest-against-target), no dashboard, no MCP server, no Git
 monitoring, no GitHub Action, no correlation across scanners, no
 Laravel-aware rules — see the Phase 4 report for the full account.
+
+## What Phase 4.1 actually delivered
+
+Docker deployment hardening for `composer-audit`: the official runtime
+image previously shipped without a `composer` binary at all (a known
+Phase 4 gap) — fixed by reusing the pinned Composer binary from the
+`builder` stage (`COPY --from=builder`, one image pull, not two) plus a
+fixed, LaraDogs-controlled `COMPOSER_HOME`
+(`/home/laradogs/.composer`, set via a container `ENV`, forwarded through
+the existing `process.env_allowlist` with zero analyzer code changes).
+Verified with a real `docker compose build` + a running (non-root,
+healthy) container, including a genuine **read-only-mounted** (`:ro`)
+target audit. Separately, researched (but did not implement) whether
+`composer-audit`'s coverage could safely move beyond `Unknown` — found,
+by direct reproduction against the real `composer` binary, that a
+target's own `composer.json` can disable Packagist entirely
+(`"repositories": {"packagist.org": false}`) and receive a perfectly
+clean, valid, exit-0 audit result even against a real, known-vulnerable
+locked package version. This rules out `Full` coverage (not just
+"insufficient evidence yet") and additionally confirmed
+`ignore-unreachable` policy settings do NOT suppress the
+`unreachable-repositories` failure signal already relied on. Coverage
+stayed `AnalyzerCoverage::unknown()` — no code change. See the Phase 4.1
+report for the full account,
+[`../development/docker.md`](../development/docker.md#composer-in-the-runtime-image),
+and
+[`analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md#dependency-coverage-research-phase-41).
+
+## What Phase 4.2 actually delivered
+
+The second real analyzer, `App\Audit\Analyzers\Npm\NpmAuditAnalyzer`,
+reusing `SymfonyProcessRunner` unchanged: runs
+`npm audit --json --package-lock-only --ignore-scripts --registry=<pinned>`
+against a project's locked npm dependencies. A dedicated `NpmAuditParser`
+normalizes npm's real `auditReportVersion: 2` schema (verified against
+the real `npm` CLI and its own GitHub source, not assumed), extracting
+only genuine advisory objects from each package's mixed `via` array
+(never fabricating findings from plain-string meta-vulnerability
+cross-references) and failing closed on malformed output, an unrecognized
+schema, or npm's distinctly-shaped registry/network-error response — none
+of which share npm's own non-zero-exit-means-failure ambiguity (a
+registry failure and "vulnerabilities found" both exit `1`; only JSON
+shape decides trust). Discovery (Phase 1) gained a new
+`FrontendProfile.npmLockfile: Detection` field (and a
+`npm-shrinkwrap.json` recognition fix) so applicability can require an
+npm-native lockfile specifically, never confusing `yarn.lock`/
+`pnpm-lock.yaml` for one. The phase's central finding: a target's own
+`.npmrc` (read automatically, unavoidably) can redirect the audit
+registry — mitigated by always pinning `--registry=` as an explicit CLI
+flag (npm's own documented config precedence puts CLI flags above
+`.npmrc` files), verified against a real fixture whose `.npmrc`
+simultaneously sets a hostile registry, `audit=false`, and a fake auth
+token, with a real `npm audit` run still returning correct data
+unaffected. `NPM_CONFIG_USERCONFIG`/`NPM_CONFIG_CACHE` are always forced
+to LaraDogs-controlled paths under its own `storage_path()` — a developer's
+personal `$HOME/.npmrc` credentials can never reach this subprocess, in
+Docker or locally, with zero Docker-specific configuration needed for it.
+Coverage stays `AnalyzerCoverage::unknown()`, same reasoning as Composer.
+Node/npm were added to the Docker `runtime` stage (installed directly,
+not copied — verified no Composer regression, +~229MB image size). The
+existing `laradogs:audit` CLI and `ScanRunner`/`ScanRecorder`/
+`FindingIngestor` pipeline needed zero changes to support a second
+analyzer; a dedicated multi-analyzer test confirms `composer-audit` and
+`npm-audit` coexist deterministically in one registry/scan, with one
+analyzer's failure never affecting the other's result. 51 new tests (260
+total; 254 passing + 6 opt-in real-network tests skipped by default). No
+other scanner (`yarn audit`, `pnpm audit`, `bun`, Semgrep, OSV-Scanner,
+Trivy, ESLint/TypeScript analyzers), no dashboard, no MCP server, no
+correlation across scanners, no Laravel-aware rules, no ADR (npm's
+findings extend ADR-0011's existing scope, not a new architectural
+decision) — see the Phase 4.2 report for the full account and
+[`analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md).
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

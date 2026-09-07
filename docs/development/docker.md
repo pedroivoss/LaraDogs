@@ -78,10 +78,13 @@ Three-stage build (`Dockerfile`):
    after build (except for the two files `runtime` explicitly copies out
    of it — see below).
 3. **`runtime`** — a fresh `php:8.3-cli-bookworm` with `pdo_sqlite`,
-   `sqlite3`, `curl` (for the healthcheck), and (Phase 4.1) the real
-   `composer` binary added. Runs as a non-root user (`laradogs`, uid
-   1000), not root. No Node, no dev dependencies, no build toolchain ship
-   in this layer.
+   `sqlite3`, `curl` (for the healthcheck), the real `composer` binary
+   (Phase 4.1), and (Phase 4.2) a real Node.js + npm installation added.
+   Runs as a non-root user (`laradogs`, uid 1000), not root. No dev
+   dependencies, no LaraDogs-frontend build toolchain ship in this layer —
+   see [Node/npm in the runtime image](#nodenpm-in-the-runtime-image)
+   below for why Node/npm are installed directly rather than copied from
+   `builder` the way Composer's binary is.
 
 A `HEALTHCHECK` hits the app's built-in `/up` route (registered via
 Laravel's `health:` routing option in `bootstrap/app.php`, not custom
@@ -154,6 +157,63 @@ AS composer_bin`) — a separate stage, not a bare
   read-only-mounted fixture, returning `AVAILABLE`/`Passed` with real
   advisories. All test containers, volumes, and temp directories created
   for this verification were removed afterward; nothing was left running.
+
+## Node/npm in the runtime image
+
+**Status: Implemented (Phase 4.2).** Unlike Composer's single-file PHAR
+(reused via one `COPY --from=builder`), npm is not one file —
+`/usr/bin/npm` is a thin wrapper around a full `/usr/lib/node_modules/npm/`
+tree, so "copy just the binary" doesn't work the same way for it. Node/npm
+are instead **installed directly in `runtime`**, reusing the exact same
+`NODE_VERSION=22` build ARG the `builder` stage already used for its own
+frontend build (not a new, separate version knob) via the identical
+NodeSource setup-script + apt mechanism already used there. `gnupg` is
+only needed transiently for that repo-setup step and is purged in the
+same Docker layer once `nodejs` itself is installed, so it never appears
+in the final image. This is the same level of version-pin precision this
+Dockerfile already uses for PHP (`PHP_VERSION=8.3` — a pinned major/minor
+line, not an exact patch) — not `latest`.
+
+Verified with a real `docker compose build` + a running (non-root,
+healthy) container:
+
+- `node --version` → `v22.23.2`; `npm --version` → `10.9.8` — both above
+  `App\Audit\Analyzers\Npm\NpmAuditAnalyzer::MIN_SUPPORTED_VERSION`'s
+  `7.0.0` floor.
+- `composer --version` → `2.10.3` — confirmed **no Composer regression**
+  from adding Node/npm to the same `runtime` stage.
+- `php artisan laradogs:audit <fixture> --json --analyzer=npm-audit`
+  against a **read-only-mounted** (`:ro`) fixture (with both a Composer
+  and an npm dimension) returned `AVAILABLE`/`Passed` with real
+  advisories; an explicit `touch` inside the mount failed with "Read-only
+  file system." `--analyzer=composer-audit` against the same fixture
+  still works; omitting `--analyzer` entirely correctly ran and reported
+  **both** analyzers as `passed` in one invocation.
+- npm's cache was confirmed to land at
+  `/app/storage/app/laradogs/npm-cache/...` — auto-created on demand, with
+  **zero Dockerfile changes needed** for this (unlike Composer's
+  `COMPOSER_HOME`, which the image sets as a container `ENV`, npm's
+  `NPM_CONFIG_USERCONFIG`/`NPM_CONFIG_CACHE` are always set by the
+  analyzer itself from `config('laradogs.npm.*')`, defaulting to paths
+  under LaraDogs' own `storage_path()` — see
+  [`../auditing/analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md#11-cachehometemp)).
+  Never inside `/app`'s own tracked code, never inside the target.
+- **Image size impact: approximately +229MB** (569MB → 798MB) for a full
+  Node.js + npm runtime — not micro-optimized this phase, but the
+  LaraDogs frontend's own `node_modules`, the `builder` stage's npm
+  cache, and Node source/build dependencies were deliberately NOT copied
+  into `runtime`; only the apt `nodejs` package itself was added.
+- All test containers, volumes, and temp directories created for this
+  verification were removed afterward; nothing was left running.
+
+**Phase 4.2.1 (registry/proxy trust hardening) required zero Dockerfile
+changes.** The new `--proxy=false --https-proxy=false --strict-ssl=true`
+flags and the `NpmConfigInspector` fail-closed check are pure application
+code/config, identical in Docker and locally. Re-verified with a real
+`docker compose build` + a running container: a hostile `.npmrc`
+(scoped-registry override, proxy pointed at an always-closed port) mounted
+`:ro` still produced a correct, real `Passed` audit result inside the
+image, with Composer unaffected.
 
 ## Why not Nginx + PHP-FPM (yet)
 

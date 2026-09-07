@@ -23,6 +23,7 @@ final readonly class NpmManifest
         public bool $packageJsonValid,
         public ?array $packageJson,
         public ?PackageManager $packageManager,
+        public bool $npmLockfileExists,
         public ?DiscoveryIssue $packageJsonIssue,
     ) {}
 
@@ -35,6 +36,7 @@ final readonly class NpmManifest
             packageJsonValid: $exists && $json !== null,
             packageJson: $json,
             packageManager: self::detectPackageManager($fs),
+            npmLockfileExists: self::detectNpmLockfile($fs),
             packageJsonIssue: ($exists && $json === null)
                 ? new DiscoveryIssue('package.json', 'File exists but is not valid JSON; treated as absent for detection purposes.')
                 : null,
@@ -46,9 +48,24 @@ final readonly class NpmManifest
         return match (true) {
             $fs->fileExists('pnpm-lock.yaml') => PackageManager::Pnpm,
             $fs->fileExists('yarn.lock') => PackageManager::Yarn,
-            $fs->fileExists('package-lock.json') => PackageManager::Npm,
+            self::detectNpmLockfile($fs) => PackageManager::Npm,
             default => null,
         };
+    }
+
+    /**
+     * Whether an npm-native lockfile is present — `package-lock.json` OR
+     * `npm-shrinkwrap.json` (both are accepted by `npm audit`; verified
+     * against the real `npm` CLI, not assumed — see
+     * docs/auditing/analyzers/npm-audit.md). Deliberately NOT satisfied by
+     * `yarn.lock`/`pnpm-lock.yaml` — those are different package managers'
+     * own lockfiles, not npm's, even though `detectPackageManager()` above
+     * treats all three as mutually-exclusive signals for the general
+     * "which package manager" question.
+     */
+    private static function detectNpmLockfile(ProjectFilesystem $fs): bool
+    {
+        return $fs->fileExists('package-lock.json') || $fs->fileExists('npm-shrinkwrap.json');
     }
 
     public function dependency(string $package): ?string

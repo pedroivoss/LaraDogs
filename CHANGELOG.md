@@ -6,6 +6,125 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 4.2.1: Npm Registry Trust Hardening
+
+### Fixed
+
+- **Closed a real, confirmed gap in `npm-audit`'s registry-trust
+  mitigation**: a target project's own `.npmrc` `proxy=`/`https-proxy=`
+  setting could reroute an otherwise correctly `--registry=`-pinned audit
+  request through a server the target controls — reproduced directly
+  with a local test listener (two real `CONNECT registry.npmjs.org:443`
+  attempts observed under the original Phase 4.2 code). Fixed by always
+  passing `--proxy=false --https-proxy=false --strict-ssl=true`
+  (verified to make the exact same hostile fixture produce zero requests
+  to the listener), with an operator-only override
+  (`config('laradogs.npm.proxy')`/`https_proxy`, never target-supplied)
+  for a legitimate trusted proxy. A companion investigation into scoped
+  registry overrides (`@scope:registry=...`) found — from the installed
+  npm's own source (`@npmcli/arborist/lib/audit-report.js`) and confirmed
+  by reproduction with a real local HTTP server — that `npm audit`
+  submits its ENTIRE dependency tree to a single registry and never
+  queries a per-scope registry for advisory data at all, so this specific
+  vector required no mitigation; recorded explicitly so it isn't mistaken
+  for an unaddressed gap.
+
+### Added
+
+- `App\Audit\Analyzers\Npm\NpmConfigInspector` — a minimal, read-only,
+  size-bounded (64KB) static scanner for a target's `.npmrc`, detecting
+  only `cafile`/`cert`/`certfile`/`key`/`keyfile` (the one npmrc
+  trust-relevant key category not neutralized by a flag — `cafile` was
+  confirmed, from source, to let a target's `.npmrc` make npm read an
+  arbitrary file from disk into TLS trust material). Reports key
+  _names_ only, never values. `NpmAuditAnalyzer::run()` fails closed with
+  a `UNSAFE_TARGET_NPM_CONFIG` diagnostic whenever any is present, or the
+  `.npmrc` exceeds the size cap — before ever invoking `npm` at all.
+  Never a Finding; this is an operational/trust failure, not a security
+  finding about the target's own code.
+- 20 new tests, including a security-regression test that opens a real
+  local TCP socket, points a target's `.npmrc` scoped-registry AND proxy
+  settings at it, runs a real `npm audit`, and asserts the socket's
+  accept queue is empty afterward — literal proof of zero bytes reaching
+  a hostile endpoint, not just an inferred-safe end result.
+
+## [Unreleased] — Phase 4.2: Npm Audit Analyzer
+
+### Added
+
+- **The second real analyzer, `App\Audit\Analyzers\Npm\NpmAuditAnalyzer`**,
+  reusing `SymfonyProcessRunner` unchanged: runs
+  `npm audit --json --package-lock-only --ignore-scripts --registry=<pinned>`
+  against a project's locked npm dependencies. Applicable only with a
+  valid `package.json` **and** an npm-native lockfile
+  (`package-lock.json` or `npm-shrinkwrap.json` — never confusing
+  `yarn.lock`/`pnpm-lock.yaml` for one); available only when a resolved
+  `npm` binary (LaraDogs' own config/PATH, never
+  `./node_modules/.bin/npm`) reports `>= 7.0.0` (the version that
+  introduced the `auditReportVersion: 2` schema this analyzer's parser
+  targets). Never runs `npm install`/`npm ci`/`npm audit fix`. A
+  dedicated `NpmAuditParser` extracts only genuine advisory objects from
+  each package's mixed `via` array (never fabricating a finding from a
+  plain-string meta-vulnerability cross-reference to another package's
+  own entry) and fails closed on malformed output, an unrecognized/older
+  schema, or npm's distinctly-shaped registry/network-error response —
+  none of which npm's own ambiguous exit codes (a registry failure and
+  "vulnerabilities found" both exit `1`) can distinguish on their own.
+  Rule identity is `{packageName}:{source}` (stable, deterministic);
+  severity maps npm's own `info`/`low`/`moderate`/`high`/`critical`
+  directly, with `Severity::Unknown` for anything else; confidence is
+  always `High`; coverage is always `Unknown` (same reasoning as
+  `composer-audit`, plus this phase's own registry-redirection finding
+  below). `fixAvailable` is preserved as metadata, never executed.
+- **The central research finding of this phase**: a target project's own
+  `.npmrc` is read automatically by `npm audit` (no flag disables this)
+  and could redirect the registry query to a server the target controls
+  — mitigated by always pinning `--registry=` as an explicit CLI flag
+  (npm's own documented config precedence puts CLI flags above `.npmrc`
+  files), verified to make a hostile project-level registry override
+  ineffective. `NPM_CONFIG_USERCONFIG`/`NPM_CONFIG_CACHE` are always
+  forced (not merely forwarded) to LaraDogs-controlled paths under its
+  own `storage_path()`, so a developer's personal registry credentials
+  can never reach the subprocess, in Docker or locally, with zero
+  Docker-specific configuration needed. A residual, documented gap
+  remains: scoped `@scope:registry=` overrides in the target's `.npmrc`
+  are not neutralized by the main registry pin. `audit=false` in the
+  target's `.npmrc` was confirmed NOT to suppress the explicit `audit`
+  command (only an install-time courtesy check).
+- **Discovery (Phase 1) gained `FrontendProfile.npmLockfile: Detection`**
+  and a `npm-shrinkwrap.json` recognition fix in `NpmManifest` (a real
+  gap — shrinkwrap-only projects previously reported no package manager
+  at all).
+- **Node/npm added to the Docker `runtime` stage** — installed directly
+  (not copied from `builder`, unlike Composer's single-file binary;
+  npm's own multi-file `/usr/lib/node_modules/npm/` tree doesn't allow
+  that), reusing the existing `NODE_VERSION=22` build ARG. Verified: no
+  Composer regression; ~+229MB image size.
+- **Zero changes needed** to the `laradogs:audit` CLI, `ScanRunner`,
+  `ScanRecorder`, or `FindingIngestor` to support a second analyzer — all
+  were already generic. A new multi-analyzer coexistence test suite
+  confirms `composer-audit` and `npm-audit` register under distinct ids
+  with no collision, both run and persist independently in one scan, and
+  one analyzer's `Failed` result never corrupts or blocks the other's.
+- 51 new tests (260 total; 254 passing + 6 opt-in real-network tests
+  skipped by default), including opt-in real-`npm`-binary proofs of the
+  read-only-target guarantee, the malicious-lifecycle-scripts guarantee,
+  and the combined hostile-`.npmrc` mitigation (fake registry +
+  `audit=false` + fake token, still returns correct real data).
+
+### Known limitations
+
+- Coverage is always `Unknown` — npm findings do not auto-resolve yet.
+- Scoped registry overrides (`@scope:registry=`) were believed at the
+  time of this entry to not be neutralized by the main `--registry=`
+  pin — **corrected in Phase 4.2.1 above**: further research proved this
+  was never actually exploitable for `npm audit` specifically. The REAL
+  gap this phase missed (`.npmrc` `proxy=`/`https-proxy=`) is fixed in
+  that same entry.
+- Workspaces are not specifically handled or tested.
+- No dependency-deprecation handling for npm packages (separate concept
+  from security advisories, not implemented even as a diagnostic).
+
 ## [Unreleased] — Phase 4.1: Composer Analyzer Deployment Readiness
 
 ### Fixed

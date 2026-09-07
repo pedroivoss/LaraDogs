@@ -3,11 +3,27 @@
 **Status: Implemented (Phase 4).** `App\Audit\Engine\Process\ProcessRunner`
 is the boundary every real analyzer must use to shell out to an external
 tool — recorded as a contract in Phase 2, implemented here for the first
-time by `SymfonyProcessRunner`. See
+time by `SymfonyProcessRunner`, and reused unchanged by both real
+analyzers since (`composer-audit`, Phase 4; `npm-audit`, Phase 4.2). See
 [ADR-0011](../architecture/decisions/ADR-0011-safe-external-process-execution.md)
 for the decision behind this design, and
 [`../auditing/analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md)
 for its first real caller.
+
+**A related but distinct trust boundary (Phase 4.2.1):** this contract's
+`environment` allowlist controls what LaraDogs' OWN process environment
+can leak into a child process — it says nothing about what the CHILD
+PROCESS's own config-file mechanism (e.g. npm's `.npmrc`, read from the
+target's `workingDirectory`) might independently do once it's running,
+such as routing its own network calls through a proxy the target
+configured. `App\Audit\Analyzers\Npm\NpmAuditAnalyzer` closes that
+specific gap with explicit CLI flags rather than anything in
+`ProcessRunner` itself — see
+[`../auditing/analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md#9-npm-configuration-security)
+for the full research and
+[ADR-0011's amendment](../architecture/decisions/ADR-0011-safe-external-process-execution.md)
+for why this stayed a per-analyzer concern rather than becoming a new
+`ProcessRunner`-level primitive.
 
 ## Why this exists
 

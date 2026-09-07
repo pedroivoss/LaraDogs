@@ -5,13 +5,16 @@
 **Status: Early Development.** This repository currently contains a
 bootstrapped Laravel application (Phase 0), a static project stack
 detector (Phase 1), an analyzer orchestration foundation (Phase 2), a
-persistent Finding domain/lifecycle (Phase 3), and — as of Phase 4 — one
-real, working scanner: `composer audit` for PHP dependency vulnerabilities,
-via a real, safe process-execution boundary. **This is not yet a general
-security scanner** — only Composer dependency auditing is real; `npm audit`,
-PHPStan/Larastan, ESLint, Semgrep, OSV-Scanner, Trivy, and Pest/PHPUnit
-integrations, correlation across scanners, and Laravel-aware rules do not
-exist yet. See [Current Capabilities](#current-capabilities) for exactly
+persistent Finding domain/lifecycle (Phase 3), and — as of Phase 4/4.2 —
+two real, working scanners: `composer audit` for PHP dependency
+vulnerabilities and `npm audit` for npm/Node.js dependency
+vulnerabilities, both via the same real, safe process-execution boundary,
+both working in local development AND inside the official Docker image.
+**This is not yet a general security scanner** — only Composer and npm
+dependency auditing are real; PHPStan/Larastan, ESLint, Semgrep,
+OSV-Scanner, Trivy, and Pest/PHPUnit integrations, correlation across
+scanners, and Laravel-aware rules do not exist yet. See
+[Current Capabilities](#current-capabilities) for exactly
 what exists today.
 
 ## The problem
@@ -114,8 +117,8 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
 - **Audit Engine foundation** (Phase 2) — the orchestration layer that
   decides which analyzers apply to a `ProjectProfile`, checks whether each
   is actually runnable on the host, builds an inspectable plan, runs it,
-  and normalizes every outcome. As of Phase 4, one real analyzer is
-  registered — see below. See
+  and normalizes every outcome. As of Phase 4.2, two real analyzers are
+  registered and coexist deterministically — see below. See
   [`docs/auditing/audit-engine.md`](docs/auditing/audit-engine.md).
 - **Finding domain & lifecycle** (Phase 3, hardened in Phase 3.1) — a
   persistent `Project`/`Scan`/`Finding`/`FindingOccurrence` schema with a
@@ -126,8 +129,9 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   successfully **and explicitly declared that it verified this finding's
   rule** — never on failure/timeout/unavailable, and never on a clean run
   that says nothing about coverage (a rule being disabled/removed is not
-  the same as it being fixed). As of Phase 4, `composer-audit` findings
-  are real, though they don't auto-resolve yet (see below). See
+  the same as it being fixed). As of Phase 4.2, `composer-audit` and
+  `npm-audit` findings are both real, though neither auto-resolves yet
+  (see below). See
   [`docs/auditing/findings-lifecycle.md`](docs/auditing/findings-lifecycle.md).
 - **Composer dependency vulnerability auditing** (Phase 4, Docker support
   in Phase 4.1) — point `laradogs:audit {path}` at any Composer project
@@ -136,15 +140,34 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   timeout-enforced, output-capped subprocess boundary
   (`SymfonyProcessRunner`) — never mutating the target, never running its
   plugins/scripts (`--no-plugins --no-scripts`, always), never running
-  `composer install`. This is genuinely one real scanner working
-  end-to-end (Discovery → Engine → safe process execution → parsing →
-  `FindingCandidate` → persistence), not a stub — verified by 47
-  automated tests and by manual runs against a real `composer` binary
-  with real network access, **both running LaraDogs locally and running
-  inside the official Docker image** (a real `docker compose build` +
-  running container, non-root, healthy, with Composer 2.10.3 available
-  and a read-only-mounted target project audited successfully). See
+  `composer install`. Verified by automated tests and by manual runs
+  against a real `composer` binary with real network access, **both
+  running LaraDogs locally and inside the official Docker image** (real
+  `docker compose build` + running container, non-root, healthy, Composer
+  2.10.3 available, read-only-mounted target audited successfully). See
   [`docs/auditing/analyzers/composer-audit.md`](docs/auditing/analyzers/composer-audit.md).
+- **Npm dependency vulnerability auditing** (Phase 4.2) — point
+  `laradogs:audit {path} --analyzer=npm-audit` (or omit `--analyzer` to
+  run every applicable analyzer, Composer and npm together) at any npm
+  project with a `package-lock.json`/`npm-shrinkwrap.json` and get back
+  real security advisories from `npm audit`, through the SAME safe
+  subprocess boundary — never running `npm install`/`npm ci`/
+  `npm audit fix`, never executing the target's lifecycle scripts
+  (`--ignore-scripts`, always), and never trusting the target's own
+  `.npmrc`: the registry and proxy are always pinned via explicit
+  `--registry=`/`--proxy=`/`--https-proxy=` flags (verified — including
+  with a real local socket the test suite controls directly — to
+  neutralize both a malicious project-level registry override and a
+  malicious proxy redirect, the latter closed in a dedicated follow-up
+  hardening pass), TLS trust material (`cafile`/`cert`/`key`/etc.)
+  declared in a target's own `.npmrc` makes the scan fail closed rather
+  than proceed, and `NPM_CONFIG_USERCONFIG`/`NPM_CONFIG_CACHE` are always
+  forced to LaraDogs-controlled paths, so a developer's own personal
+  registry credentials can never reach it. Also verified inside the
+  official Docker image (Node/npm added to the runtime, no Composer
+  regression). Both scanners are verified to coexist deterministically in
+  the same project/scan. See
+  [`docs/auditing/analyzers/npm-audit.md`](docs/auditing/analyzers/npm-audit.md).
 - A Laravel 13 application with React + Inertia (official starter kit),
   Fortify-based authentication, and a single authenticated dashboard page
   (Phase 0).
@@ -157,11 +180,11 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
 - The documentation and architectural decisions this README links to.
 
 **Not yet implemented** (everything that makes LaraDogs actually useful
-as a _general_ security/quality tool, beyond `composer audit`):
+as a _general_ security/quality tool, beyond `composer audit`/`npm audit`):
 
-- Any other real scanner integration (`npm audit`, PHPStan/Larastan,
-  ESLint, Semgrep, OSV-Scanner, Trivy) — bug detection, performance
-  analysis, JS/TS dependency auditing.
+- Any other real scanner integration (`yarn audit`, `pnpm audit`, `bun`,
+  PHPStan/Larastan, ESLint, Semgrep, OSV-Scanner, Trivy) — bug detection,
+  performance analysis, static analysis.
 - Laravel-aware rules, correlation/deduplication across scanners, a
   dedicated scan-to-scan comparison **report** (the underlying
   regression/reopen lifecycle exists; a NEW/RESOLVED/UNCHANGED/REGRESSED
@@ -244,10 +267,15 @@ the image does and current limitations.
 LaraDogs is a security tool; its own security is architecture, not an
 afterthought — untrusted analyzed code, secret redaction, MCP credential
 scoping, and non-root execution are all designed in from Phase 0. As of
-Phase 4, real scanner process execution exists and follows that same
-philosophy: argv-only (no shell), an explicit environment allowlist, real
-timeouts, output capping, and never mutating or executing code from the
-analyzed project (see
+Phase 4/4.2, real scanner process execution exists (for both `composer
+audit` and `npm audit`) and follows that same philosophy: argv-only (no
+shell), an explicit environment allowlist, real timeouts, output capping,
+and never mutating or executing code from the analyzed project — for
+npm specifically, this extends to never trusting the target's own
+`.npmrc` (registry always pinned, personal credentials never forwarded;
+see
+[`docs/auditing/analyzers/npm-audit.md`](docs/auditing/analyzers/npm-audit.md#9-npm-configuration-security))
+(see
 [`docs/development/process-execution.md`](docs/development/process-execution.md)).
 Read [`docs/architecture/security-model.md`](docs/architecture/security-model.md)
 for what's actually true today versus what's a binding future constraint,
@@ -269,10 +297,10 @@ calling agent does that, using context LaraDogs provides. See
 Phase 0 (bootstrap), Phase 1 (Project Discovery), Phase 2 (Audit Engine
 Foundation), and Phase 3 (Finding Domain + Persistence) are complete.
 Phase 4 (Security/Dependency Scanners) is in progress — `composer audit`
-is done; other scanners (`npm audit`, PHPStan/Larastan, ESLint, Semgrep,
-OSV-Scanner, Trivy) are not started. Phases 5–13 are not started. Full
-list, current position, and items deliberately deferred:
-[`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
+and `npm audit` are done (Phase 4/4.1/4.2); other scanners (PHPStan/
+Larastan, ESLint, Semgrep, OSV-Scanner, Trivy) are not started. Phases
+5–13 are not started. Full list, current position, and items deliberately
+deferred: [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
 
 ## Contributing
 

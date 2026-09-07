@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Audit\Analyzers\Composer\ComposerAuditAnalyzer;
+use App\Audit\Analyzers\Npm\NpmAuditAnalyzer;
 use App\Audit\Engine\Process\ProcessRunner;
 use App\Audit\Engine\Process\SymfonyProcessRunner;
 use App\Audit\Engine\Registry\AnalyzerRegistry;
@@ -24,6 +25,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AnalyzerRegistry::class, function (): AnalyzerRegistry {
             $registry = new AnalyzerRegistry;
             $registry->register($this->app->make(ComposerAuditAnalyzer::class));
+            $registry->register($this->app->make(NpmAuditAnalyzer::class));
 
             return $registry;
         });

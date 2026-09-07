@@ -89,9 +89,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config \
         sqlite3 \
         curl \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && docker-php-ext-install -j"$(nproc)" pdo_sqlite \
     && apt-get purge -y --auto-remove libsqlite3-dev pkg-config
+
+# Node/npm for `npm audit` (Phase 4.2 — App\Audit\Analyzers\Npm\NpmAuditAnalyzer).
+# Installed directly here (not copied from `builder`, unlike Composer's
+# single-file binary): npm is not one file — `/usr/bin/npm` is a thin
+# wrapper around a full `/usr/lib/node_modules/npm/` tree, so "copy just
+# the binary" doesn't work the way it does for Composer's PHAR. Reuses the
+# SAME NODE_VERSION major-version pin already used by the `builder` stage
+# (not a new, separate version knob) via the same NodeSource setup
+# script/apt mechanism already used there — this installs the current
+# 22.x release, matching this Dockerfile's existing PHP_VERSION precision
+# (a pinned major/minor line, not an exact patch), not `latest`. `gnupg` is
+# only needed transiently for the NodeSource repo setup script, purged in
+# this same layer once nodejs itself is installed.
+ARG NODE_VERSION
+RUN apt-get update && apt-get install -y --no-install-recommends gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && apt-get purge -y --auto-remove gnupg \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --gid 1000 laradogs \
     && useradd --uid 1000 --gid laradogs --shell /bin/bash --create-home laradogs

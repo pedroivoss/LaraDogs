@@ -1,0 +1,7 @@
+{
+    "message": "request to https://this-registry-does-not-resolve-laradogs-test.invalid/-/npm/v1/security/audits/quick failed, reason: getaddrinfo ENOTFOUND this-registry-does-not-resolve-laradogs-test.invalid",
+    "error": {
+        "summary": "",
+        "detail": ""
+    }
+}

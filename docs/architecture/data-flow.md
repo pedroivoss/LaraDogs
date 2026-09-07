@@ -76,9 +76,10 @@ AuditRunResult (runId, plan, one AnalyzerExecution per item, timing)
 
 No `Finding` is produced and nothing is persisted by the engine itself —
 see [`../auditing/audit-engine.md`](../auditing/audit-engine.md) and
-[ADR-0009](decisions/ADR-0009-audit-engine-foundation.md). As of Phase 4
-one real analyzer is registered (`composer-audit`) and `Process/` has a
-real implementation — see the next section.
+[ADR-0009](decisions/ADR-0009-audit-engine-foundation.md). As of Phase 4.2
+two real analyzers are registered (`composer-audit`, `npm-audit`) and
+`Process/` has one real implementation both reuse unchanged — see the
+next two sections.
 
 ## Implemented: Composer Audit + real process execution (Phase 4)
 
@@ -123,6 +124,64 @@ See [`../auditing/analyzers/composer-audit.md`](../auditing/analyzers/composer-a
 [`../development/process-execution.md`](../development/process-execution.md),
 and [ADR-0011](decisions/ADR-0011-safe-external-process-execution.md).
 
+## Implemented: Npm Audit (Phase 4.2)
+
+```
+CLI / ScanRunner (same two entry points as Composer Audit above)
+  ▼
+ProjectDiscovery::discover() [ FrontendProfile gained npmLockfile: Detection ]
+  ▼
+AuditEngine::run(context)  [ registry: ComposerAuditAnalyzer, NpmAuditAnalyzer ]
+  │  applicability(profile): package.json + (package-lock.json OR
+  │    npm-shrinkwrap.json) both present — yarn.lock/pnpm-lock.yaml alone
+  │    does not count
+  │  availability(context): binary resolved (LaraDogs' own config/PATH
+  │    only) + `npm --version` >= 7.0.0, via the SAME ProcessRunner
+  ▼
+NpmAuditAnalyzer::run(context)
+  │  SymfonyProcessRunner::run(ProcessCommand(
+  │    argv: [npm, audit, --json, --package-lock-only, --ignore-scripts,
+  │           --registry=<pinned, e.g. https://registry.npmjs.org>],
+  │    cwd: project path,
+  │    env: explicit allowlist + ALWAYS-forced NPM_CONFIG_USERCONFIG/
+  │         NPM_CONFIG_CACHE (LaraDogs-controlled paths — never the
+  │         target's `.npmrc`-influenced defaults, never a developer's
+  │         personal $HOME/.npmrc credentials),
+  │    timeout: configured))
+  │  → timedOut / processStartFailed / outputTruncated / malformed or
+  │    unrecognized-schema JSON (including registry/network-error and
+  │    missing-lockfile-error shapes) all fail closed; a non-zero exit
+  │    code alone is NOT a failure — npm's own default threshold makes
+  │    ANY found vulnerability exit non-zero, the SAME code a registry
+  │    failure also produces, so only JSON shape decides trust
+  ▼
+NpmAuditParser::parse(stdout) → NpmAuditReport
+  │  (dedicated parser; extracts only real advisory OBJECTS from each
+  │   package's `via` array, skipping plain-string cross-references to
+  │   other packages' own entries — never fabricates a finding for a
+  │   purely meta-vulnerable package)
+  ▼
+AnalyzerResult (Passed, rawMetadata: advisories/severity_counts/npm_version,
+  │             coverage: always Unknown — see npm-audit.md)
+  ▼
+NpmAuditAnalyzer::candidates(context, result) → list<FindingCandidate>
+  ▼
+[ persisted path only ] ScanRunner (same, unchanged instance already
+  looking up composer-audit above) also looks up npm-audit and hands its
+  candidates to the same ScanRecorder → Finding / FindingOccurrence
+  persisted, independently identified, no id collision with Composer's
+```
+
+The central Phase 4.2 research finding: a target's own `.npmrc` (read
+automatically, no flag to disable it) could redirect `npm audit`'s
+registry query to a server it controls — mitigated by always pinning
+`--registry=` as an explicit CLI flag (npm's own documented config
+precedence: CLI flags > env vars > npmrc files), verified to make the
+project's own `.npmrc` registry override ineffective. See
+[`../auditing/analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md#9-npm-configuration-security)
+for the full investigation, including a documented residual gap
+(scoped `@scope:registry=` overrides).
+
 ## Implemented: Finding ingestion and lifecycle (Phase 3)
 
 ```
@@ -161,14 +220,14 @@ above.
 Not implemented. Recorded here so the eventual implementation has a
 target shape consistent with
 [ADR-0002](decisions/ADR-0002-application-architecture.md) and
-[ADR-0004](decisions/ADR-0004-scanner-execution-strategy.md). Phases 1–4
+[ADR-0004](decisions/ADR-0004-scanner-execution-strategy.md). Phases 1–4.2
 (above) already deliver stack detection, orchestration, real process
-execution, one real scanner (`composer audit`), and persistence/
-lifecycle; what's missing is: more real analyzers (`npm audit`, PHPStan/
-Larastan, ESLint, Semgrep, ...), correlating the same underlying issue
-across multiple scanners into one `Finding`, Laravel-aware rules layered
-on top of generic scanner output, and exposure beyond the plain
-`laradogs:audit` CLI (MCP tool, Dashboard).
+execution, two real scanners (`composer audit`, `npm audit`), and
+persistence/lifecycle; what's missing is: more real analyzers (PHPStan/
+Larastan, ESLint, Semgrep, OSV-Scanner, Trivy, ...), correlating the same
+underlying issue across multiple scanners into one `Finding`,
+Laravel-aware rules layered on top of generic scanner output, and
+exposure beyond the plain `laradogs:audit` CLI (MCP tool, Dashboard).
 
 ```
 CLI / MCP tool / Dashboard "Run Scan" action
@@ -177,20 +236,24 @@ CLI / MCP tool / Dashboard "Run Scan" action
 Audit Core: stack detection (Project Discovery — implemented)
   ▼
 Audit Core: analyzer selection (Audit Engine planning — implemented;
-  │  one real analyzer registered, composer-audit — Phase 4)
+  │  two real analyzers registered, composer-audit + npm-audit,
+  │  coexisting deterministically — Phase 4 / Phase 4.2)
   ▼
 Audit Core: analyzer execution
-  │  (real analyzers, isolated subprocess via ProcessRunner — implemented
-  │   for composer-audit, Phase 4; more analyzers TODO)
+  │  (real analyzers, isolated subprocess via the SAME ProcessRunner —
+  │   implemented for both composer-audit and npm-audit; more analyzers
+  │   TODO)
   ▼
 Audit Core: normalization
   │  (raw scanner output → FindingCandidate — implemented, with
-  │   composer-audit as the first real producer, Phase 4)
+  │   composer-audit (Phase 4) and npm-audit (Phase 4.2) as real
+  │   producers)
   ▼
 Audit Core: correlation + deduplication
   │  (same underlying issue reported by MULTIPLE scanners → one Finding —
-  │   not yet meaningful with only one real scanner; fingerprinting/
-  │   ingestion for a single scanner's output is implemented, Phase 3)
+  │   not yet meaningful across only two, non-overlapping-ecosystem
+  │   scanners; fingerprinting/ingestion for a single scanner's output is
+  │   implemented, Phase 3)
   ▼
 Audit Core: Laravel-aware rule pass
   │  (framework-specific heuristics layered on top of generic scanner

@@ -1,14 +1,17 @@
 # Audit Engine (Foundation)
 
-**Status: Implemented (Phase 2 foundation; Phase 4 adds the first real
-analyzer and process-execution implementation).**
+**Status: Implemented (Phase 2 foundation; Phase 4/4.2 add real analyzers
+and the process-execution implementation).**
 This is the orchestration layer between a `ProjectProfile` (Phase 1) and
 real scanner integrations. It does not itself detect anything about a
 project (that's Discovery) and never runs a scanner directly — that's
-each concrete `Analyzer`'s own job, via `ProcessRunner`. As of Phase 4,
-exactly one real analyzer is registered in production:
-`App\Audit\Analyzers\Composer\ComposerAuditAnalyzer` — see
-[`analyzers/composer-audit.md`](analyzers/composer-audit.md). See
+each concrete `Analyzer`'s own job, via `ProcessRunner`. As of Phase 4.2,
+two real analyzers are registered in production, deterministically
+coexisting in the same registry:
+`App\Audit\Analyzers\Composer\ComposerAuditAnalyzer` and
+`App\Audit\Analyzers\Npm\NpmAuditAnalyzer` — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md) and
+[`analyzers/npm-audit.md`](analyzers/npm-audit.md). See
 [ADR-0009](../architecture/decisions/ADR-0009-audit-engine-foundation.md)
 for the engine's own foundational decisions and
 [ADR-0011](../architecture/decisions/ADR-0011-safe-external-process-execution.md)
@@ -71,8 +74,12 @@ QUALITY | CONFIGURATION | TEST`, mirroring the `Finding` category list
   considered and left out for now.
 
 The first real `Analyzer` implementation, `ComposerAuditAnalyzer`, was
-added in Phase 4 — see
-[`analyzers/composer-audit.md`](analyzers/composer-audit.md). Synthetic
+added in Phase 4; the second, `NpmAuditAnalyzer`, in Phase 4.2 — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md) and
+[`analyzers/npm-audit.md`](analyzers/npm-audit.md). Both coexist
+deterministically in the same `AnalyzerRegistry` (unique ids, no
+collision) and one failing does not affect the other's result — see
+`tests/Feature/Audit/MultiAnalyzerCoexistenceTest.php`. Synthetic
 ones for testing the engine itself still live under
 `tests/Support/Engine/Analyzers/` (never autoloaded in production) — see
 [Fake analyzers](#fake-analyzers).
@@ -253,11 +260,16 @@ Under `tests/Support/Engine/Analyzers/` (never autoloaded in production):
 
 ## CLI
 
-**IMPLEMENTED (Phase 4):** `php artisan laradogs:audit {path} [--json]
-[--analyzer=composer-audit]` — see
-[`analyzers/composer-audit.md`](analyzers/composer-audit.md#cli) for
-details. It prints one real `AuditRunResult` and deliberately does not
-persist a `Scan` (see that doc for why).
+**IMPLEMENTED (Phase 4; Phase 4.2 confirms it works unmodified with two
+analyzers registered):** `php artisan laradogs:audit {path} [--json]
+[--analyzer=composer-audit|npm-audit]` — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md#cli) and
+[`analyzers/npm-audit.md`](analyzers/npm-audit.md#24-cli) for details. It
+prints one real `AuditRunResult` and deliberately does not persist a
+`Scan` (see those docs for why). Omitting `--analyzer` runs every
+applicable, available analyzer in the registry — confirmed live against
+a project with both a Composer and an npm dimension, correctly reporting
+both.
 
 ## Persistence
 

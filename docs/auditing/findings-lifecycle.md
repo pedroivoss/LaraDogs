@@ -176,6 +176,13 @@ JSON output), so `composer-audit` continues to always declare
 primitive on top of a verification guarantee that doesn't actually exist
 yet.
 
+The same conclusion holds for `npm-audit` (Phase 4.2), for the same
+underlying reason (no "rules executed" universe) — and Phase 4.2.1's own
+registry/proxy trust hardening research doesn't change it either: closing
+a trust gap in HOW the audit data is fetched is not the same as gaining a
+verifiable universe of WHAT was checked. See
+[`analyzers/npm-audit.md`](analyzers/npm-audit.md#10-coverage).
+
 ### Auto-resolution safety
 
 **The single most important safety rule in this domain.** A finding may

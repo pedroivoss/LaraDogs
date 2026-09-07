@@ -1,0 +1,8 @@
+{
+    "auditReportVersion": 2,
+    "vulnerabilities": {
+        "lodash": {
+            "name": "lodash",
+            "severity": "critical",
+            "isDirect": true,
+            "via": [

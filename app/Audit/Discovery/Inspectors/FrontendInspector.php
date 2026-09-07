@@ -21,6 +21,7 @@ final class FrontendInspector
         return new FrontendProfile(
             node: $this->inspectNode($manifest),
             packageManager: $manifest->packageManager,
+            npmLockfile: $manifest->npmLockfileExists ? Detection::detected('package-lock.json or npm-shrinkwrap.json') : Detection::notDetected(),
             vite: $this->inspectDependencyOrConfig($manifest, $fs, 'vite', ['vite.config.js', 'vite.config.ts', 'vite.config.mjs', 'vite.config.mts']),
             react: $this->inspectDependency($manifest, 'react'),
             vue: $this->inspectDependency($manifest, 'vue'),

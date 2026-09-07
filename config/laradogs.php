@@ -70,4 +70,50 @@ return [
         'timeout_seconds' => (int) env('LARADOGS_COMPOSER_TIMEOUT_SECONDS', 30),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Npm Audit Analyzer
+    |--------------------------------------------------------------------------
+    |
+    | `binary` overrides automatic resolution (see NpmBinaryResolver) —
+    | never `./node_modules/.bin/npm` from a target, never a path read from
+    | the target's own package.json. Left null, LaraDogs looks for `npm` on
+    | its OWN PATH via Symfony's ExecutableFinder.
+    |
+    | `registry` is always passed as an explicit `--registry=` flag (the
+    | highest-precedence form of npm config) so a target project's own
+    | `.npmrc` registry override can never redirect audit queries to a
+    | server it controls — verified empirically, see
+    | docs/auditing/analyzers/npm-audit.md.
+    |
+    | `userconfig_path`/`cache_path` are always forced (never merely
+    | forwarded) into the child process as NPM_CONFIG_USERCONFIG/
+    | NPM_CONFIG_CACHE — neither path needs to exist ahead of time (npm
+    | treats a missing per-user config file as "no per-user config", and
+    | creates its cache directory on demand) — so a developer's own real
+    | $HOME/.npmrc (which may carry registry auth tokens) is never read,
+    | and npm's cache never lands inside the target or LaraDogs' own code.
+    |
+    | `proxy`/`https_proxy` (Phase 4.2.1): left null, `--proxy=false
+    | --https-proxy=false` is always passed explicitly — verified
+    | empirically that a target's own `.npmrc` `proxy=`/`https-proxy=`
+    | would otherwise route the (correctly `--registry=`-pinned) audit
+    | request through a server the target controls, defeating the
+    | registry pin. If an operator genuinely needs LaraDogs itself to
+    | reach the registry through a real, trusted proxy, set these here —
+    | never left to whatever LaraDogs' own environment or the target's
+    | `.npmrc` happens to set.
+    |
+    */
+
+    'npm' => [
+        'binary' => env('LARADOGS_NPM_BINARY'),
+        'timeout_seconds' => (int) env('LARADOGS_NPM_TIMEOUT_SECONDS', 30),
+        'registry' => env('LARADOGS_NPM_REGISTRY', 'https://registry.npmjs.org'),
+        'userconfig_path' => env('LARADOGS_NPM_USERCONFIG_PATH', storage_path('app/laradogs/empty.npmrc')),
+        'cache_path' => env('LARADOGS_NPM_CACHE_PATH', storage_path('app/laradogs/npm-cache')),
+        'proxy' => env('LARADOGS_NPM_PROXY'),
+        'https_proxy' => env('LARADOGS_NPM_HTTPS_PROXY'),
+    ],
+
 ];

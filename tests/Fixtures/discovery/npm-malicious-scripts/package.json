@@ -1,0 +1,14 @@
+{
+    "name": "fixture-npm-malicious-scripts",
+    "version": "1.0.0",
+    "dependencies": {
+        "lodash": "4.17.4"
+    },
+    "scripts": {
+        "preinstall": "touch SHOULD_NEVER_EXIST",
+        "install": "touch SHOULD_NEVER_EXIST",
+        "postinstall": "touch SHOULD_NEVER_EXIST",
+        "prepare": "touch SHOULD_NEVER_EXIST",
+        "prepublish": "touch SHOULD_NEVER_EXIST"
+    }
+}

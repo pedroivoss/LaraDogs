@@ -1,10 +1,17 @@
 # Rule Catalog, Identity, and Versioning
 
-This document defines LaraDogs' conventions for LaraDogs-controlled static
-analysis rules — currently only Semgrep rules (see
-[`analyzers/semgrep.md`](analyzers/semgrep.md) and
+**Status: Implemented (Phase 5 foundation; Phase 6 adds the first
+Laravel-aware rules on top of it).** This document defines LaraDogs'
+conventions for LaraDogs-controlled static analysis rules — currently only
+Semgrep rules (see [`analyzers/semgrep.md`](analyzers/semgrep.md) and
 [`static-analysis.md`](static-analysis.md)), but the convention is written
-to extend to any future rule-based analyzer.
+to extend to any future rule-based analyzer. For the actual rules and
+their full rationale (what they detect, false-positive analysis,
+remediation), see [`rules/security-rules.md`](rules/security-rules.md),
+[`rules/quality-rules.md`](rules/quality-rules.md), and
+[`rules/performance-rules.md`](rules/performance-rules.md) — this document
+covers only the shared catalog/identity/versioning MECHANISM, not each
+rule's own content.
 
 ## Rule catalog
 
@@ -29,39 +36,59 @@ sync becomes error-prone in practice.
 
 **What lives in the catalog (PHP) vs. the rule file (YAML):**
 
-| Concept                                    | Lives in                            | Why                                                                                                                                                |
-| ------------------------------------------ | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Rule id, pattern, message, YAML `severity` | Rule file (YAML)                    | Semgrep-native concepts — the engine parses and matches these directly.                                                                            |
-| `cwe`, `references`                        | Rule file (YAML), under `metadata:` | Semgrep passes a rule's own `metadata:` block through verbatim in its JSON output — no PHP-side YAML parsing needed.                               |
-| `AnalyzerCategory`, `Confidence`           | Catalog (PHP)                       | LaraDogs-specific concepts Semgrep has no notion of — keeping them in exactly one place (PHP) avoids two sources of truth silently drifting apart. |
-| Ruleset version                            | Catalog (PHP)                       | A LaraDogs-level provenance concept, not a Semgrep concept.                                                                                        |
+| Concept                                    | Lives in                            | Why                                                                                                                                                                                                                                         |
+| ------------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rule id, pattern, message, YAML `severity` | Rule file (YAML)                    | Semgrep-native concepts — the engine parses and matches these directly.                                                                                                                                                                     |
+| `cwe`, `references`, `remediation`         | Rule file (YAML), under `metadata:` | Semgrep passes a rule's own `metadata:` block through verbatim in its JSON output — no PHP-side YAML parsing needed. `remediation` (Phase 6) is read into `FindingCandidate::$recommendation` the same way `cwe`/`references` already were. |
+| `AnalyzerCategory`, `Confidence`           | Catalog (PHP)                       | LaraDogs-specific concepts Semgrep has no notion of — keeping them in exactly one place (PHP) avoids two sources of truth silently drifting apart.                                                                                          |
+| Ruleset version                            | Catalog (PHP)                       | A LaraDogs-level provenance concept, not a Semgrep concept.                                                                                                                                                                                 |
 
 ## Rule id convention
 
 `laradogs.<category>.<subject>.<check>` — stable, unique, versionable,
 independent of the rule's human-facing `message`/title (which can be
-edited freely without changing identity). Examples in the current bundled
-ruleset:
+edited freely without changing identity). All 12 rule ids in the current
+bundled ruleset:
 
-- `laradogs.quality.debug.dd-call`
-- `laradogs.quality.debug.var-dump-call`
-- `laradogs.security.php.eval-usage`
+- `laradogs.quality.debug.dd-call` (Phase 5)
+- `laradogs.quality.debug.var-dump-call` (Phase 5)
+- `laradogs.quality.debug.ray-call` (Phase 6)
+- `laradogs.security.php.eval-usage` (Phase 5)
+- `laradogs.security.sql.tainted-raw-query` (Phase 6)
+- `laradogs.security.blade.raw-output-tainted` (Phase 6)
+- `laradogs.security.command.tainted-exec` (Phase 6)
+- `laradogs.security.filesystem.tainted-path` (Phase 6)
+- `laradogs.security.redirect.tainted-open-redirect` (Phase 6)
+- `laradogs.security.mass-assignment.request-all` (Phase 6)
+- `laradogs.configuration.debug.app-debug-default-true` (Phase 6)
+- `laradogs.performance.eloquent.unbounded-all` (Phase 6)
+
+See [`rules/security-rules.md`](rules/security-rules.md),
+[`rules/quality-rules.md`](rules/quality-rules.md), and
+[`rules/performance-rules.md`](rules/performance-rules.md) for what each
+one actually detects, its severity/confidence rationale, and its known
+limitations.
 
 `<category>` is a short, coarse grouping word (`quality`, `security`, …)
 — it is NOT the same as `AnalyzerCategory` (which lives in the catalog,
 per above) and need not match it exactly, though it usually will read
 naturally alongside it. `<subject>` names the broad area (`debug`, `php`,
-future: `blade`, `sql`, `auth`, …). `<check>` names the specific pattern.
-This is a naming CONVENTION, not a machine-enforced grammar — there is no
-parser validating the dotted shape; consistency is maintained by review
-and the drift test described above.
+`sql`, `blade`, `command`, `filesystem`, `redirect`, `mass-assignment`,
+`eloquent`, …). `<check>` names the specific pattern. This is a naming
+CONVENTION, not a machine-enforced grammar — there is no parser validating
+the dotted shape; consistency is maintained by review and the drift test
+described above.
 
-**Future rule ids sketched in earlier planning** (NOT yet real, validated
-rules — listed here only as illustrations of the convention, never to be
-copied into the catalog without independently verifying the underlying
-Semgrep pattern actually matches what it claims to):
-`laradogs.security.sql.raw-user-input`,
-`laradogs.security.blade.unescaped-output`.
+**Note on earlier planning sketches:** Phase 5's version of this document
+sketched two illustrative, NOT-yet-real rule ids as examples of the
+convention: `laradogs.security.sql.raw-user-input` and
+`laradogs.security.blade.unescaped-output`. Phase 6 implemented rules in
+those same two areas, but under DIFFERENT, more precise final ids
+(`laradogs.security.sql.tainted-raw-query` and
+`laradogs.security.blade.raw-output-tainted`) once the actual detection
+mechanism (taint mode for SQL; a generic-mode textual heuristic for Blade)
+was empirically worked out — a reminder that a sketched id is never a
+commitment, only a naming-convention illustration.
 
 ## Rule versioning — three independent concepts
 
@@ -72,10 +99,11 @@ Never conflate these:
 2. **Semgrep binary version** — `semgrep --version`, resolved and recorded
    per run (`SemgrepAnalyzer::$resolvedVersion`, persisted as a
    `FindingCandidate`'s `analyzerVersion`).
-3. **Ruleset version** (`SemgrepRuleCatalog::RULESET_VERSION`, e.g.
-   `'2026.09.1'`) — bumped whenever the bundled rules meaningfully change
-   (a rule added, removed, or its matching behavior altered), never merely
-   as a release marker alongside (1). Persisted as a `FindingCandidate`'s
+3. **Ruleset version** (`SemgrepRuleCatalog::RULESET_VERSION`, currently
+   `'2026.09.2'` — bumped from Phase 5's `'2026.09.1'` when Phase 6 added
+   9 new rules) — bumped whenever the bundled rules meaningfully change (a
+   rule added, removed, or its matching behavior altered), never merely as
+   a release marker alongside (1). Persisted as a `FindingCandidate`'s
    `ruleVersion`, and optionally carried by
    `AnalyzerCoverage::$rulesetVersion` for traceability.
 

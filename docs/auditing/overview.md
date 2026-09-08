@@ -15,10 +15,13 @@ see [`findings-lifecycle.md`](findings-lifecycle.md),
 [`analyzers/composer-audit.md`](analyzers/composer-audit.md),
 [`analyzers/npm-audit.md`](analyzers/npm-audit.md), and
 [`analyzers/semgrep.md`](analyzers/semgrep.md). Step 6 (Laravel-aware
-rules) now has a first, deliberately minimal foundation — see
-[`static-analysis.md`](static-analysis.md) and [`rules.md`](rules.md) for
-what exists (a 3-rule proof-of-vertical ruleset) versus what remains
-future work (a comprehensive Laravel-aware rule library). Steps 5 and 8
+rules) now has a first, deliberately small ruleset (12 rules: 3
+proof-of-vertical from Phase 5, 9 genuinely Laravel-aware from Phase 6) —
+see [`static-analysis.md`](static-analysis.md),
+[`rules.md`](rules.md), and
+[`rules/security-rules.md`](rules/security-rules.md) for what exists
+versus what remains future work (a comprehensive Laravel-aware rule
+library). Steps 5 and 8
 remain planned, agreed during Phase 0/3 so later phases have a shared
 target instead of each improvising the shape independently.
 
@@ -28,8 +31,9 @@ target instead of each improvising the shape independently.
    Inertia/React/Vue presence, Composer/NPM/Docker/CI configuration) — see
    [`project-discovery.md`](project-discovery.md).
 2. **Select applicable scanners** (`composer audit` — implemented, Phase 4;
-   `npm audit` — implemented, Phase 4.2; Semgrep — foundation implemented,
-   Phase 5, with a small 3-rule bundled ruleset (see
+   `npm audit` — implemented, Phase 4.2; Semgrep — implemented, Phase 5
+   foundation + Phase 6 rules, a 12-rule bundled ruleset including a first
+   Laravel-aware slice (see
    [`static-analysis.md`](static-analysis.md)) — PHPStan/Larastan, ESLint,
    OSV-Scanner, Trivy, Pest/PHPUnit, ...) — only tools actually
    installed/usable, degrading gracefully otherwise — see
@@ -51,10 +55,14 @@ target instead of each improvising the shape independently.
 6. Apply Laravel-aware rules layered on top of generic scanner output
    (Eloquent, policies, middleware, mass assignment, queues, CORS,
    Sanctum, etc. — see the product brief for the full list). A first,
-   deliberately minimal foundation exists as of Phase 5 (3 bundled Semgrep
-   rules proving the vertical — see [`static-analysis.md`](static-analysis.md)
-   and [`rules.md`](rules.md)); the comprehensive Laravel-aware rule
-   library this step describes does not exist yet.
+   deliberately small ruleset exists as of Phase 6 (12 bundled Semgrep
+   rules — 3 proof-of-vertical from Phase 5, 9 genuinely Laravel-aware
+   from Phase 6, including mass assignment — see
+   [`static-analysis.md`](static-analysis.md),
+   [`rules.md`](rules.md), and
+   [`rules/security-rules.md`](rules/security-rules.md)); the
+   COMPREHENSIVE Laravel-aware rule library this step describes (policies/
+   middleware/queues/CORS/Sanctum-specific checks) does not exist yet.
 7. **Persist** the result as an immutable `Scan` and compare it against
    the project's previous scan — [`findings-lifecycle.md`](findings-lifecycle.md)
    for what's implemented (ingestion, fingerprinting, lifecycle,

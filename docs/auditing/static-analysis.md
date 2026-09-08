@@ -1,11 +1,11 @@
 # Static Analysis (SAST) Foundation
 
-**Status: Foundation implemented (Phase 5); comprehensive rule library not
-yet implemented.** This document describes the Static Application Security
-Testing (SAST) vertical LaraDogs is building — what exists today
-(Semgrep, a small bundled ruleset), and what is deliberately deferred to
-future phases (a comprehensive Laravel-aware rule library, additional
-engines).
+**Status: Foundation implemented (Phase 5); first Laravel-aware rules
+added (Phase 6); comprehensive rule library not yet implemented.** This
+document describes the Static Application Security Testing (SAST)
+vertical LaraDogs is building — what exists today (Semgrep, a 12-rule
+bundled ruleset), and what is deliberately deferred to future phases (a
+comprehensive Laravel-aware rule library, additional engines).
 
 ## What "SAST foundation" means here
 
@@ -62,12 +62,20 @@ can't hide code).
 
 - One analyzer: `App\Audit\Analyzers\Semgrep\SemgrepAnalyzer` (see
   [`analyzers/semgrep.md`](analyzers/semgrep.md)).
-- One bundled ruleset: 3 rules under
+- One bundled ruleset: **12 rules** under
   `resources/audit/semgrep/rules/laradogs-rules.yml` (see
-  [`rules.md`](rules.md)) — 2 code-quality checks (`dd()`/`var_dump()` left
-  in code) and 1 security check (`eval()` usage). Deliberately simple and
-  well-tested, proving the vertical rather than attempting comprehensive
-  coverage.
+  [`rules.md`](rules.md)) — Phase 5 proved the vertical with 3 rules (2
+  code-quality checks, `dd()`/`var_dump()`, plus 1 security check,
+  `eval()` usage); Phase 6 added the first 9 genuinely Laravel-aware
+  rules on top of that foundation — SQL raw-query, Blade raw-output/XSS,
+  OS command execution, filesystem/path traversal, open redirect, mass
+  assignment, a second debug helper (`ray()`), a debug-config check, and
+  one conservative performance hotspot (`Model::all()`). See
+  [`rules/security-rules.md`](rules/security-rules.md),
+  [`rules/quality-rules.md`](rules/quality-rules.md), and
+  [`rules/performance-rules.md`](rules/performance-rules.md) for what
+  each one actually detects. Still deliberately small — rule quality over
+  rule count — and still not a comprehensive Laravel security scanner.
 - Full Finding lifecycle integration, including the first real use of
   `AnalyzerCoverage::Explicit` (see
   [`analyzers/semgrep.md#coverage`](analyzers/semgrep.md#coverage-the-first-analyzer-to-use-explicit)
@@ -75,13 +83,21 @@ can't hide code).
 
 ## What is explicitly deferred
 
-- **A comprehensive Laravel-aware rule library** (SQL injection, XSS/unescaped
-  Blade output, mass-assignment, authorization bypass patterns, and
-  dozens/hundreds of similar rules) — this phase's 2-5 rules are
-  deliberately NOT a preview of that library's quality bar; they exist
-  only to prove the pipeline. The real rule library is future work, likely
-  its own phase, building on this same `SemgrepRuleCatalog`/rule-identity
-  convention (see [`rules.md`](rules.md)).
+- **A COMPREHENSIVE Laravel-aware rule library.** Phase 6's 9 new rules
+  are a first, real slice in exactly the areas a full library would cover
+  (SQL injection, Blade/XSS, command execution, path traversal, open
+  redirect, mass assignment) — but each is narrowly scoped (taint-mode or
+  a specific structural pattern, not exhaustive coverage of every way each
+  vulnerability class can occur) and the set as a whole is still only 12
+  rules, not the dozens/hundreds a comprehensive library would need.
+  Notably still entirely absent: authorization-bypass detection
+  (evaluated and explicitly rejected this phase as too
+  false-positive-prone for a naive pattern — see
+  [`rules/security-rules.md`](rules/security-rules.md)), CSRF, and N+1
+  query detection beyond one conservative `Model::all()` signal. The real,
+  comprehensive rule library remains future work, likely its own phase,
+  building on this same `SemgrepRuleCatalog`/rule-identity convention (see
+  [`rules.md`](rules.md)).
 - **Additional SAST/SCA engines** — OSV-Scanner, Trivy, ESLint,
   PHPStan/Larastan run against a target (as opposed to LaraDogs' own
   codebase, which already uses PHPStan/Pint/Pest for itself), Pest/PHPUnit
@@ -94,8 +110,13 @@ can't hide code).
 
 ## README truthfulness
 
-After this phase, LaraDogs' own README may accurately claim: Composer
-dependency auditing, npm dependency auditing, and a Semgrep-based static
-analysis **foundation**. It must not yet claim: a comprehensive Laravel
-security scanner, detecting all SQL injection, detecting all XSS, or a
-complete Laravel ruleset — none of those are true yet.
+LaraDogs' own README may accurately claim: Composer dependency auditing,
+npm dependency auditing, and a Semgrep-based static analysis foundation
+with a small, first Laravel-aware ruleset (SQL raw-query, Blade/XSS,
+command execution, path traversal, open redirect, and mass-assignment
+checks — each narrowly scoped, not exhaustive). It must not yet claim: a
+comprehensive Laravel security scanner, detecting ALL SQL injection,
+detecting ALL XSS, authorization-bypass detection, or a complete Laravel
+ruleset — none of those are true yet, and Phase 6 explicitly evaluated
+and rejected a couple of these as too false-positive-prone to ship this
+phase (see [`rules/security-rules.md`](rules/security-rules.md)).

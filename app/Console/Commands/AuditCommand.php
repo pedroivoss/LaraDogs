@@ -10,7 +10,10 @@ use App\Audit\Engine\AuditEngine;
 use App\Audit\Engine\Contracts\AnalyzerId;
 use App\Audit\Engine\Execution\AnalyzerExecution;
 use App\Audit\Engine\Execution\AuditRunResult;
+use App\Audit\Engine\Execution\ExecutionStatus;
 use App\Audit\Engine\Registry\AnalyzerRegistry;
+use App\Audit\Findings\FindingCandidate;
+use App\Audit\Findings\Ingestion\ProducesFindingCandidates;
 use Illuminate\Console\Command;
 
 /**
@@ -23,12 +26,23 @@ use Illuminate\Console\Command;
  * invocation has no well-defined, stable `Project` identity to attach
  * history to — inventing one here would be scope this command doesn't
  * need. See docs/auditing/analyzers/composer-audit.md's CLI section.
+ *
+ * Phase 6: normalizes and prints each analyzer's `FindingCandidate`s
+ * (rule id, severity, file:line, message) the same way
+ * `App\Audit\Findings\Ingestion\ScanRunner` does — by calling
+ * `ProducesFindingCandidates::candidates()` on the same registry — but
+ * WITHOUT ever calling `ScanRecorder`, so nothing is persisted. Before
+ * this, the CLI only ever printed an analyzer's own summary/diagnostics
+ * (e.g. "2 finding(s) found"), never the findings themselves — not useful
+ * enough for a real manual audit. This is deliberately NOT a new API: the
+ * JSON shape below is built ad hoc in this command, not a stable contract,
+ * and `FindingCandidate` itself gained no new interface.
  */
 final class AuditCommand extends Command
 {
     protected $signature = 'laradogs:audit
         {path : Path to the project to audit}
-        {--json : Output the full AuditRunResult as JSON}
+        {--json : Output the full AuditRunResult (with normalized findings) as JSON}
         {--analyzer= : Only run the analyzer with this id (e.g. composer-audit)}';
 
     protected $description = 'Run a one-off audit against a directory and print the result (read-only, never persists a Scan)';
@@ -63,16 +77,46 @@ final class AuditCommand extends Command
         );
 
         $runResult = (new AuditEngine($scopedRegistry))->run($context);
+        $candidates = $this->collectCandidates($scopedRegistry, $context, $runResult);
 
         if ((bool) $this->option('json')) {
-            $this->line((string) json_encode($runResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $this->line((string) json_encode(
+                [
+                    'run' => $runResult,
+                    'findings' => array_map($this->candidateToArray(...), $candidates),
+                ],
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+            ));
 
             return self::SUCCESS;
         }
 
         $this->renderHuman($runResult);
+        $this->renderFindings($candidates, $discoveryResult->path);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @return list<FindingCandidate>
+     */
+    private function collectCandidates(AnalyzerRegistry $registry, AuditContext $context, AuditRunResult $runResult): array
+    {
+        $candidates = [];
+
+        foreach ($runResult->executions as $execution) {
+            if ($execution->status !== ExecutionStatus::Passed || $execution->result === null) {
+                continue;
+            }
+
+            $analyzer = $registry->get($execution->id);
+
+            if ($analyzer instanceof ProducesFindingCandidates) {
+                array_push($candidates, ...$analyzer->candidates($context, $execution->result));
+            }
+        }
+
+        return $candidates;
     }
 
     private function scopedRegistry(AnalyzerRegistry $registry, string $analyzerId): ?AnalyzerRegistry
@@ -134,5 +178,74 @@ final class AuditCommand extends Command
         }
 
         $this->newLine();
+    }
+
+    /**
+     * @param  list<FindingCandidate>  $candidates
+     */
+    private function renderFindings(array $candidates, string $projectPath): void
+    {
+        if ($candidates === []) {
+            return;
+        }
+
+        $this->components->info(sprintf('Findings (%d)', count($candidates)));
+        $this->newLine();
+
+        foreach ($candidates as $candidate) {
+            $this->renderFinding($candidate);
+        }
+    }
+
+    private function renderFinding(FindingCandidate $candidate): void
+    {
+        $color = match ($candidate->severity->value) {
+            'critical', 'high' => 'red',
+            'medium' => 'yellow',
+            'low', 'info' => 'gray',
+            default => 'default',
+        };
+
+        $location = $candidate->filePath !== null
+            ? sprintf('%s:%s', $candidate->filePath, $candidate->lineStart ?? '?')
+            : '(no location)';
+
+        $this->line(sprintf(
+            '<fg=%s>[%s]</> %s <fg=gray>(%s, confidence: %s)</>',
+            $color,
+            strtoupper($candidate->severity->value),
+            $candidate->ruleId,
+            $candidate->category->value,
+            $candidate->confidence->value,
+        ));
+        $this->line("  {$location}");
+        $this->line("  {$candidate->title}");
+        $this->newLine();
+    }
+
+    /**
+     * A deliberately ad hoc array shape for this command's own `--json`
+     * output — not a stable API, and not a new interface on
+     * `FindingCandidate` itself (see this class's own docblock).
+     *
+     * @return array<string,mixed>
+     */
+    private function candidateToArray(FindingCandidate $candidate): array
+    {
+        return [
+            'rule_id' => $candidate->ruleId,
+            'analyzer_id' => $candidate->analyzerId,
+            'category' => $candidate->category->value,
+            'severity' => $candidate->severity->value,
+            'confidence' => $candidate->confidence->value,
+            'title' => $candidate->title,
+            'description' => $candidate->description,
+            'recommendation' => $candidate->recommendation,
+            'file' => $candidate->filePath,
+            'line_start' => $candidate->lineStart,
+            'line_end' => $candidate->lineEnd,
+            'cwe' => $candidate->cwe,
+            'references' => $candidate->references,
+        ];
     }
 }

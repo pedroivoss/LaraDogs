@@ -16,15 +16,19 @@ use App\Audit\Findings\Confidence;
  * Deliberately not a database table, a config-driven loader, or anything
  * that reads {@see rulesFilePath()} itself: the rule id list below and the
  * YAML file's own `id:` keys are two independent, manually-kept-in-sync
- * declarations of the same 3 rules (verified by
+ * declarations of the same rules (verified by
  * `tests/Unit/Audit/Analyzers/Semgrep/SemgrepRuleCatalogTest.php`, which
  * asserts every id here appears verbatim in the real YAML file) — adding a
  * YAML-parsing dependency just to derive this list from the file itself
- * would be premature for 3 rules (see docs/auditing/rules.md).
+ * would be premature for a dozen rules (see docs/auditing/rules.md).
  *
- * This is intentionally a small, proof-of-vertical ruleset (2-5 rules) —
- * see that same doc for why a comprehensive Laravel-aware catalog is
- * explicitly out of scope this phase.
+ * Phase 5 shipped a small, proof-of-vertical ruleset (3 rules). Phase 6
+ * added the first genuinely useful Laravel-aware rules on top of it —
+ * still deliberately small (~8-15 rules total, rule quality over rule
+ * count) and still not a comprehensive Laravel security scanner. See
+ * docs/auditing/rules/security-rules.md,
+ * docs/auditing/rules/quality-rules.md, and
+ * docs/auditing/rules/performance-rules.md.
  */
 final class SemgrepRuleCatalog
 {
@@ -36,8 +40,17 @@ final class SemgrepRuleCatalog
      * matching behavior altered), never merely as a release marker. Never
      * consulted by {@see \App\Audit\Engine\Execution\AnalyzerCoverage::verifies()}
      * — provenance only.
+     *
+     * `2026.09.2` (Phase 6): added the first Laravel-aware ruleset (9 new
+     * rules — SQL/raw-query, Blade/XSS, command execution, filesystem/path,
+     * open redirect, mass assignment, a second debug helper, a debug-config
+     * check, and one conservative performance hotspot) alongside the 3
+     * Phase 5 proof-of-vertical rules. See
+     * docs/auditing/rules/security-rules.md,
+     * docs/auditing/rules/quality-rules.md, and
+     * docs/auditing/rules/performance-rules.md for the full rationale.
      */
-    public const string RULESET_VERSION = '2026.09.1';
+    public const string RULESET_VERSION = '2026.09.2';
 
     /**
      * @var list<array{id: string, category: AnalyzerCategory, confidence: Confidence}>
@@ -57,6 +70,51 @@ final class SemgrepRuleCatalog
             'id' => 'laradogs.security.php.eval-usage',
             'category' => AnalyzerCategory::Security,
             'confidence' => Confidence::Medium,
+        ],
+        [
+            'id' => 'laradogs.security.sql.tainted-raw-query',
+            'category' => AnalyzerCategory::Security,
+            'confidence' => Confidence::Medium,
+        ],
+        [
+            'id' => 'laradogs.security.blade.raw-output-tainted',
+            'category' => AnalyzerCategory::Security,
+            'confidence' => Confidence::Medium,
+        ],
+        [
+            'id' => 'laradogs.security.command.tainted-exec',
+            'category' => AnalyzerCategory::Security,
+            'confidence' => Confidence::Medium,
+        ],
+        [
+            'id' => 'laradogs.security.filesystem.tainted-path',
+            'category' => AnalyzerCategory::Security,
+            'confidence' => Confidence::Medium,
+        ],
+        [
+            'id' => 'laradogs.security.redirect.tainted-open-redirect',
+            'category' => AnalyzerCategory::Security,
+            'confidence' => Confidence::Medium,
+        ],
+        [
+            'id' => 'laradogs.security.mass-assignment.request-all',
+            'category' => AnalyzerCategory::Security,
+            'confidence' => Confidence::Medium,
+        ],
+        [
+            'id' => 'laradogs.quality.debug.ray-call',
+            'category' => AnalyzerCategory::Quality,
+            'confidence' => Confidence::High,
+        ],
+        [
+            'id' => 'laradogs.configuration.debug.app-debug-default-true',
+            'category' => AnalyzerCategory::Configuration,
+            'confidence' => Confidence::High,
+        ],
+        [
+            'id' => 'laradogs.performance.eloquent.unbounded-all',
+            'category' => AnalyzerCategory::Performance,
+            'confidence' => Confidence::Low,
         ],
     ];
 

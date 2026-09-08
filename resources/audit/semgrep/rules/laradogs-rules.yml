@@ -1,9 +1,14 @@
-# LaraDogs' own bundled Semgrep ruleset — Phase 5 (Static Analysis
-# Foundation). This is deliberately a small, empirically-verified proof of
-# the Static Analysis vertical (Discovery -> SemgrepAnalyzer -> Semgrep ->
-# SemgrepParser -> FindingCandidate -> Finding lifecycle), not yet the
-# comprehensive Laravel-aware rule library — that is future work (see
-# docs/auditing/rules.md).
+# LaraDogs' own bundled Semgrep ruleset.
+#
+# Phase 5 (Static Analysis Foundation) proved the vertical with 3 rules.
+# Phase 6 (First Laravel-Aware Ruleset) adds the first genuinely useful
+# Laravel/PHP/Blade rules — still deliberately small (rule quality over
+# rule count: ~8-15 rules, not 100+) and still not a comprehensive Laravel
+# security scanner. See docs/auditing/rules.md and
+# docs/auditing/rules/security-rules.md /
+# docs/auditing/rules/quality-rules.md /
+# docs/auditing/rules/performance-rules.md for the full rationale, false
+# positive analysis, and remediation guidance behind every rule below.
 #
 # Every rule id here is enumerated verbatim in
 # App\Audit\Analyzers\Semgrep\SemgrepRuleCatalog::RULES — the single source
@@ -15,10 +20,23 @@
 # file's `metadata:` blocks — those are LaraDogs-specific concepts Semgrep
 # has no notion of, and keeping them only in SemgrepRuleCatalog (PHP) avoids
 # two sources of truth silently drifting apart. `metadata.cwe`/
-# `metadata.references` below ARE read back from Semgrep's own JSON output
-# (`extra.metadata`) — genuinely Semgrep-native passthrough fields, so no
-# YAML parsing is ever done on the LaraDogs/PHP side of this file.
+# `metadata.references`/`metadata.remediation` below ARE read back from
+# Semgrep's own JSON output (`extra.metadata`) — genuinely Semgrep-native
+# passthrough fields, so no YAML parsing is ever done on the LaraDogs/PHP
+# side of this file.
+#
+# Taint-mode rules (mode: taint) were verified, empirically, against the
+# real installed semgrep CLI (1.176.0) with --oss-only: Semgrep's
+# intraprocedural taint analysis (source -> sink propagation through
+# assignment, string concatenation, and interpolation) is available in the
+# OSS engine — it does NOT require the Semgrep Pro Engine. Every taint rule
+# below was tested against a direct-passthrough case, a string-concatenation
+# case, and a string-interpolation case, all three of which are correctly
+# flagged, and against a constant/non-tainted case, which is correctly NOT
+# flagged.
 rules:
+    # --- Phase 5 rules (unchanged) --------------------------------------
+
     - id: laradogs.quality.debug.dd-call
       languages: [php]
       severity: WARNING
@@ -26,6 +44,11 @@ rules:
           dd() halts execution and dumps variable state — left in code, it will
           break the request that reaches it in production. Remove before
           shipping.
+      metadata:
+          remediation: >-
+              Remove the dd() call. If you need to inspect state during
+              debugging, use dump() locally (never committed) or proper
+              structured logging (Log::debug()) for anything meant to persist.
       patterns:
           - pattern: dd(...)
 
@@ -35,6 +58,11 @@ rules:
       message: >-
           var_dump() prints raw variable state directly into the response body
           and should not ship to production; use structured logging instead.
+      metadata:
+          remediation: >-
+              Remove the var_dump() call. Use Log::debug()/Log::info() for
+              anything that needs to persist, or a debugger/dump() during
+              local development only.
       patterns:
           - pattern: var_dump(...)
 
@@ -52,5 +80,465 @@ rules:
               - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
           references:
               - https://cwe.mitre.org/data/definitions/95.html
+          remediation: >-
+              Replace eval() with an explicit, restricted alternative: a
+              match/switch over known cases, a whitelisted callable map, or a
+              small, purpose-built parser. Never construct the evaluated string
+              from user input, even partially.
       patterns:
           - pattern: eval(...)
+
+    # --- Phase 6: SQL / raw query -----------------------------------------
+
+    - id: laradogs.security.sql.tainted-raw-query
+      languages: [php]
+      severity: ERROR
+      message: >-
+          Possible SQL injection: a value that appears to come directly from
+          user input (request/query-string/superglobal) reaches a raw SQL
+          construct (DB::raw / whereRaw / orderByRaw / selectRaw / havingRaw)
+          without an apparent numeric cast in between. Raw fragments are not
+          parameter-bound by Laravel's query builder, so unsanitized input
+          reaching one can let an attacker alter the query.
+      metadata:
+          cwe:
+              - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+          references:
+              - https://cwe.mitre.org/data/definitions/89.html
+              - https://laravel.com/docs/queries#raw-expressions
+          remediation: >-
+              Prefer parameter bindings over raw SQL: whereRaw('id = ?', [$id])
+              instead of whereRaw("id = $id"). When a raw fragment must include
+              a value that cannot be bound (e.g. a column/direction name),
+              validate it against an explicit allowlist (in_array($value,
+              ['asc', 'desc'], true)) or cast it to the expected scalar type
+              (e.g. (int)) before use.
+      mode: taint
+      # Every $REQ->method(...) source below is restricted with a
+      # metavariable-regex requiring the receiver to be spelled like a
+      # request variable — verified NECESSARY, not cosmetic: Semgrep's PHP
+      # matcher treats `->` and `::` as interchangeable when the receiver is
+      # a metavariable, so an UNRESTRICTED `$REQ->get(...)` source pattern
+      # was empirically confirmed to also match unrelated static calls
+      # sharing the same method name (e.g. `Storage::get(...)`,
+      # `Cache::get(...)`, `Model::query()`), which would taint values that
+      # never came from user input at all. `request()->method(...)` forms
+      # need no such restriction — their receiver is the literal `request()`
+      # call, not a generic metavariable.
+      pattern-sources:
+          - patterns:
+                - pattern: $REQ->input(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->get(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->query(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->post(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->all(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - pattern: request()->input(...)
+          - pattern: request()->get(...)
+          - pattern: request()->query(...)
+          - pattern: $_GET[...]
+          - pattern: $_POST[...]
+          - pattern: $_REQUEST[...]
+      pattern-sanitizers:
+          - pattern: (int)$X
+          - pattern: (float)$X
+          - pattern: intval(...)
+          - pattern: floatval(...)
+      pattern-sinks:
+          - pattern: DB::raw($X)
+          - pattern: $QB->whereRaw($X, ...)
+          - pattern: $QB->orderByRaw($X)
+          - pattern: $QB->selectRaw($X, ...)
+          - pattern: $QB->havingRaw($X, ...)
+
+    # --- Phase 6: Blade raw output / XSS ------------------------------------
+
+    - id: laradogs.security.blade.raw-output-tainted
+      languages: [generic]
+      severity: ERROR
+      message: >-
+          Possible XSS: a Blade raw-output block ({!! ... !!}, which does NOT
+          HTML-escape its content) appears to directly echo a value read from
+          user input (request/query-string) rather than a variable name alone.
+          Raw output is exempt from Blade's automatic escaping, so if this
+          value can contain markup, it will be rendered as-is in the response.
+      metadata:
+          cwe:
+              - "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+          references:
+              - https://cwe.mitre.org/data/definitions/79.html
+              - https://laravel.com/docs/blade#displaying-data
+          remediation: >-
+              Use escaped output ({{ $value }}) unless the value is genuinely
+              trusted HTML (e.g. rendered from a trusted Markdown/HTML sanitizer
+              you control). If raw output is required, sanitize the value first
+              (e.g. with an HTML purifier) rather than echoing user input
+              directly.
+      patterns:
+          - pattern-either:
+                - pattern: '{!! ... ->input(...) ... !!}'
+                - pattern: '{!! ... ->get(...) ... !!}'
+                - pattern: '{!! ... ->query(...) ... !!}'
+                - pattern: '{!! ... ->post(...) ... !!}'
+                - pattern: '{!! ... ->all() ... !!}'
+                - pattern: '{!! ... request()->... !!}'
+                - pattern: '{!! ... $_GET... !!}'
+                - pattern: '{!! ... $_POST... !!}'
+                - pattern: '{!! ... $_REQUEST... !!}'
+
+    # --- Phase 6: Command execution -----------------------------------------
+
+    - id: laradogs.security.command.tainted-exec
+      languages: [php]
+      severity: ERROR
+      message: >-
+          Possible OS command injection: a value that appears to come directly
+          from user input reaches a shell command execution function
+          (exec/system/shell_exec/passthru/proc_open) without an apparent
+          numeric cast in between.
+      metadata:
+          cwe:
+              - "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')"
+          references:
+              - https://cwe.mitre.org/data/definitions/78.html
+              - https://www.php.net/manual/en/function.escapeshellarg.php
+          remediation: >-
+              Avoid building shell commands from user input. If unavoidable,
+              use escapeshellarg()/escapeshellcmd() on every user-controlled
+              argument, or — far preferably — use Symfony Process with an argv
+              array (never a shell string) so there is no shell to inject into
+              at all.
+      mode: taint
+      # Every $REQ->method(...) source below is restricted with a
+      # metavariable-regex requiring the receiver to be spelled like a
+      # request variable — verified NECESSARY, not cosmetic: Semgrep's PHP
+      # matcher treats `->` and `::` as interchangeable when the receiver is
+      # a metavariable, so an UNRESTRICTED `$REQ->get(...)` source pattern
+      # was empirically confirmed to also match unrelated static calls
+      # sharing the same method name (e.g. `Storage::get(...)`,
+      # `Cache::get(...)`, `Model::query()`), which would taint values that
+      # never came from user input at all. `request()->method(...)` forms
+      # need no such restriction — their receiver is the literal `request()`
+      # call, not a generic metavariable.
+      pattern-sources:
+          - patterns:
+                - pattern: $REQ->input(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->get(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->query(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->post(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->all(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - pattern: request()->input(...)
+          - pattern: request()->get(...)
+          - pattern: request()->query(...)
+          - pattern: $_GET[...]
+          - pattern: $_POST[...]
+          - pattern: $_REQUEST[...]
+      pattern-sanitizers:
+          - pattern: (int)$X
+          - pattern: (float)$X
+          - pattern: intval(...)
+          - pattern: floatval(...)
+          - pattern: escapeshellarg(...)
+          - pattern: escapeshellcmd(...)
+      pattern-sinks:
+          - pattern: exec($X, ...)
+          - pattern: system($X, ...)
+          - pattern: shell_exec($X)
+          - pattern: passthru($X, ...)
+          - pattern: proc_open($X, ...)
+
+    # --- Phase 6: Path / filesystem -----------------------------------------
+
+    - id: laradogs.security.filesystem.tainted-path
+      languages: [php]
+      severity: ERROR
+      message: >-
+          Possible path traversal / arbitrary file access: a value that appears
+          to come directly from user input reaches a filesystem operation
+          (file_get_contents/file_put_contents/unlink/fopen/Storage::get)
+          without an apparent basename()/numeric cast in between. If the value
+          can contain "../" segments or an absolute path, this may allow
+          reading, writing, or deleting a file outside the intended directory.
+      metadata:
+          cwe:
+              - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+          references:
+              - https://cwe.mitre.org/data/definitions/22.html
+              - https://laravel.com/docs/filesystem
+          remediation: >-
+              Never build a filesystem path directly from user input. Use
+              basename() to strip directory components, validate the result
+              against an allowlist of permitted files/extensions, and prefer
+              Laravel's Storage facade with a fixed disk root over raw
+              filesystem functions so paths cannot escape the configured root.
+      mode: taint
+      # Every $REQ->method(...) source below is restricted with a
+      # metavariable-regex requiring the receiver to be spelled like a
+      # request variable — verified NECESSARY, not cosmetic: Semgrep's PHP
+      # matcher treats `->` and `::` as interchangeable when the receiver is
+      # a metavariable, so an UNRESTRICTED `$REQ->get(...)` source pattern
+      # was empirically confirmed to also match unrelated static calls
+      # sharing the same method name (e.g. `Storage::get(...)`,
+      # `Cache::get(...)`, `Model::query()`), which would taint values that
+      # never came from user input at all. `request()->method(...)` forms
+      # need no such restriction — their receiver is the literal `request()`
+      # call, not a generic metavariable.
+      pattern-sources:
+          - patterns:
+                - pattern: $REQ->input(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->get(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->query(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->post(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->all(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - pattern: request()->input(...)
+          - pattern: request()->get(...)
+          - pattern: request()->query(...)
+          - pattern: $_GET[...]
+          - pattern: $_POST[...]
+          - pattern: $_REQUEST[...]
+      pattern-sanitizers:
+          - pattern: basename(...)
+          - pattern: (int)$X
+          - pattern: intval(...)
+      pattern-sinks:
+          - pattern: file_get_contents($X)
+          - pattern: file_put_contents($X, ...)
+          - pattern: unlink($X)
+          - pattern: fopen($X, ...)
+          - pattern: Storage::get($X)
+          - pattern: Storage::disk(...)->get($X)
+          - pattern: Storage::put($X, ...)
+          - pattern: Storage::delete($X)
+
+    # --- Phase 6: Open redirect ----------------------------------------------
+
+    - id: laradogs.security.redirect.tainted-open-redirect
+      languages: [php]
+      severity: WARNING
+      message: >-
+          Possible open redirect: a value that appears to come directly from
+          user input reaches redirect()/redirect()->to() without an apparent
+          numeric cast in between. If the value is a full URL, an attacker can
+          craft a link to your own trusted domain that silently redirects
+          victims to an external, attacker-controlled site.
+      metadata:
+          cwe:
+              - "CWE-601: URL Redirection to Untrusted Site ('Open Redirect')"
+          references:
+              - https://cwe.mitre.org/data/definitions/601.html
+              - https://laravel.com/docs/responses#redirects
+          remediation: >-
+              Prefer redirect()->route('name') or redirect()->action(...) with
+              a named destination over a user-supplied URL. If a
+              user-supplied "return to" URL is genuinely required, validate it
+              is a relative, same-site path (e.g. reject any value containing
+              "://" or starting with "//") before redirecting.
+      mode: taint
+      # See the SQL rule's own comment above for why every $REQ->method(...)
+      # source is restricted with a metavariable-regex on the receiver.
+      pattern-sources:
+          - patterns:
+                - pattern: $REQ->input(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->get(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->query(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - patterns:
+                - pattern: $REQ->post(...)
+                - metavariable-regex:
+                      metavariable: $REQ
+                      regex: "(?i)^\\$?request$"
+          - pattern: request()->input(...)
+          - pattern: request()->get(...)
+          - pattern: request()->query(...)
+          - pattern: $_GET[...]
+          - pattern: $_POST[...]
+          - pattern: $_REQUEST[...]
+      pattern-sanitizers:
+          - pattern: (int)$X
+          - pattern: intval(...)
+      pattern-sinks:
+          - pattern: redirect($X)
+          - pattern: redirect()->to($X)
+          - patterns:
+                - pattern: $R->to($X)
+                - metavariable-regex:
+                      metavariable: $R
+                      regex: "(?i)^\\$?redirect(or)?$"
+
+    # --- Phase 6: Mass assignment --------------------------------------------
+
+    - id: laradogs.security.mass-assignment.request-all
+      languages: [php]
+      severity: WARNING
+      message: >-
+          Possible mass assignment: the entire request payload (->all()) is
+          passed directly to Model::create()/->update() with no explicit field
+          selection. If the model's $fillable/$guarded configuration is
+          missing or too permissive, an attacker could set a field never
+          intended to be user-controlled (e.g. a role/permission/owner column).
+      metadata:
+          cwe:
+              - 'CWE-915: Improperly Controlled Modification of Dynamically-Determined Object Attributes'
+          references:
+              - https://cwe.mitre.org/data/definitions/915.html
+              - https://laravel.com/docs/eloquent#mass-assignment
+          remediation: >-
+              Pass only validated, explicitly-selected fields — e.g.
+              $request->validate([...]) or $request->only([...]) — instead of
+              ->all(). Review the model's $fillable list to confirm it does
+              not include any field that should never be user-settable.
+      # $REQ->all() here is intentionally left unrestricted (unlike the
+      # taint rules above): it is nested inside a specific two-level
+      # structural pattern (Model::create(...)/->update(...) wrapping it),
+      # not a taint source spanning the whole function body, so the
+      # `->`/`::` receiver ambiguity has a far narrower blast radius here —
+      # documented as a known, accepted limitation rather than restricted,
+      # to avoid missing the (far more common) real mass-assignment shape.
+      patterns:
+          - pattern-either:
+                - pattern: $MODEL::create($REQ->all())
+                - pattern: $VAR->update($REQ->all())
+                - pattern: $MODEL::create($REQ->all(...))
+                - pattern: $VAR->update($REQ->all(...))
+                - pattern: $MODEL::create(request()->all())
+                - pattern: $VAR->update(request()->all())
+
+    # --- Phase 6: Debug / quality ---------------------------------------------
+
+    - id: laradogs.quality.debug.ray-call
+      languages: [php]
+      severity: WARNING
+      message: >-
+          ray() is a debugging helper (Spatie Ray) — left in code, it attempts
+          to send data to the Ray desktop app on every request and should not
+          ship to production.
+      metadata:
+          remediation: >-
+              Remove the ray() call before committing. Use Log::debug() for
+              anything that needs to persist beyond local debugging.
+      patterns:
+          - pattern: ray(...)
+
+    # --- Phase 6: Configuration ------------------------------------------------
+
+    - id: laradogs.configuration.debug.app-debug-default-true
+      languages: [php]
+      severity: WARNING
+      message: >-
+          env('APP_DEBUG', true) defaults debug mode ON whenever the
+          APP_DEBUG environment variable is missing or unset. Laravel's own
+          skeleton ships this defaulted to false — if this default is ever
+          reached in a deployed environment (e.g. a missing .env entry),
+          detailed stack traces, file paths, and environment/config values
+          (via Whoops) may be exposed to visitors.
+      metadata:
+          cwe:
+              - 'CWE-489: Active Debug Code'
+          references:
+              - https://cwe.mitre.org/data/definitions/489.html
+              - https://laravel.com/docs/configuration#debug-mode
+          remediation: >-
+              Default APP_DEBUG to false (env('APP_DEBUG', false)) so a
+              missing environment variable fails safe, and set the real value
+              explicitly per environment (true only for local development).
+      patterns:
+          - pattern: env('APP_DEBUG', true)
+
+    # --- Phase 6: Performance (conservative) -----------------------------------
+
+    - id: laradogs.performance.eloquent.unbounded-all
+      languages: [php]
+      severity: INFO
+      message: >-
+          Model::all() loads every row of the table into memory at once, with
+          no pagination or limit. This is a performance hotspot worth
+          reviewing, not a confirmed bug: it may be entirely fine for a small,
+          bounded table (e.g. a lookup/reference table), or a genuine problem
+          for a table that grows with user activity.
+      metadata:
+          references:
+              - https://laravel.com/docs/eloquent#retrieving-models
+              - https://laravel.com/docs/pagination
+          remediation: >-
+              If this table can grow unbounded, replace ::all() with
+              ::paginate()/::cursor()/a bounded ::limit(), or confirm the
+              table size is and will remain small enough that loading it
+              entirely is intentional.
+      # $MODEL is restricted to a capitalized (PascalCase-looking) receiver
+      # — verified NECESSARY: an unrestricted `$MODEL::all()` pattern was
+      # empirically confirmed to also match `$request->all()` (Semgrep's PHP
+      # matcher treats `->` and `::` as interchangeable when the receiver is
+      # a metavariable), which would turn this rule into a false positive
+      # on nearly every controller that reads the request body. A
+      # lowercase-$-prefixed variable name never satisfies this regex.
+      patterns:
+          - pattern: $MODEL::all()
+          - metavariable-regex:
+                metavariable: $MODEL
+                regex: '^[A-Z]'

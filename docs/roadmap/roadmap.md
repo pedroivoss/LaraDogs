@@ -2,22 +2,22 @@
 
 ## Phases
 
-| Phase | Name                                    | Status                                                                                                                                                                               |
-| ----- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0     | Discovery / Architecture / Bootstrap    | **Complete**                                                                                                                                                                         |
-| 1     | Project Discovery (stack detection)     | **Complete**                                                                                                                                                                         |
-| 2     | Audit Engine Foundation                 | **Complete**                                                                                                                                                                         |
-| 3     | Finding Domain + Persistence            | **Complete**                                                                                                                                                                         |
-| 4     | Security / Dependency Scanners          | **In progress** (`composer audit` + `npm audit` done; a small, 2-5-rule Semgrep foundation done — see below; OSV-Scanner/Trivy and a comprehensive Semgrep rule library not started) |
-| 5     | Bug / Quality Analysis                  | Not started                                                                                                                                                                          |
-| 6     | Performance Analysis                    | Not started                                                                                                                                                                          |
-| 7     | Dashboard                               | Not started                                                                                                                                                                          |
-| 8     | History / Comparison / Quality Gates    | Not started                                                                                                                                                                          |
-| 9     | MCP                                     | Not started                                                                                                                                                                          |
-| 10    | Authentication / MCP Credentials        | Not started                                                                                                                                                                          |
-| 11    | Git Integration / Continuous Monitoring | Not started                                                                                                                                                                          |
-| 12    | CI / GitHub Action                      | Not started                                                                                                                                                                          |
-| 13    | Hardening / Release                     | Not started                                                                                                                                                                          |
+| Phase | Name                                    | Status                                                                                                                                                                                                              |
+| ----- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | Discovery / Architecture / Bootstrap    | **Complete**                                                                                                                                                                                                        |
+| 1     | Project Discovery (stack detection)     | **Complete**                                                                                                                                                                                                        |
+| 2     | Audit Engine Foundation                 | **Complete**                                                                                                                                                                                                        |
+| 3     | Finding Domain + Persistence            | **Complete**                                                                                                                                                                                                        |
+| 4     | Security / Dependency Scanners          | **In progress** (`composer audit` + `npm audit` done; a 12-rule Semgrep foundation done, including a first Laravel-aware slice — see below; OSV-Scanner/Trivy and a comprehensive Semgrep rule library not started) |
+| 5     | Bug / Quality Analysis                  | Not started                                                                                                                                                                                                         |
+| 6     | Performance Analysis                    | Not started                                                                                                                                                                                                         |
+| 7     | Dashboard                               | Not started                                                                                                                                                                                                         |
+| 8     | History / Comparison / Quality Gates    | Not started                                                                                                                                                                                                         |
+| 9     | MCP                                     | Not started                                                                                                                                                                                                         |
+| 10    | Authentication / MCP Credentials        | Not started                                                                                                                                                                                                         |
+| 11    | Git Integration / Continuous Monitoring | Not started                                                                                                                                                                                                         |
+| 12    | CI / GitHub Action                      | Not started                                                                                                                                                                                                         |
+| 13    | Hardening / Release                     | Not started                                                                                                                                                                                                         |
 
 No changes were made to this phase list during Phase 0 — the brief's
 ordering (foundation → discovery → engine → domain model → scanners →
@@ -245,6 +245,66 @@ OSV-Scanner/Trivy/ESLint/PHPStan-against-target, no auto-fix/AI
 remediation, no dashboard, no MCP server, no correlation across scanners
 — see [`analyzers/semgrep.md`](../auditing/analyzers/semgrep.md) for the
 full account.
+
+## What Phase 6 actually delivered
+
+The first genuinely useful (though still small and deliberately
+conservative) Laravel-aware ruleset: 9 new Semgrep rules on top of Phase
+5's 3 proof-of-vertical rules (12 total), chosen for signal/noise ratio
+over count per the phase's own "rule quality > rule count" instruction —
+see [`analyzers/semgrep.md`](../auditing/analyzers/semgrep.md),
+[`rules/security-rules.md`](../auditing/rules/security-rules.md),
+[`rules/quality-rules.md`](../auditing/rules/quality-rules.md), and
+[`rules/performance-rules.md`](../auditing/rules/performance-rules.md)
+for the full account.
+
+Six of the nine are Security-category taint-mode rules (SQL raw-query,
+Blade raw-output/XSS, OS command execution, filesystem/path traversal,
+open redirect, plus a plain-pattern mass-assignment rule) — the first
+rules in the bundled ruleset to use Semgrep's real intraprocedural
+source→sink taint propagation (verified to be part of the OSS engine, not
+Pro-only, and to correctly propagate through assignment, string
+concatenation, and interpolation, not just a literal argument match). One
+Quality rule (`ray-call`, the Spatie Ray debugging helper), one
+Configuration rule (`env('APP_DEBUG', true)` defaulting debug mode on),
+and exactly one Performance rule (`Model::all()`, Info severity, Low
+confidence — a review hotspot, never a confirmed bug, matching this
+phase's own explicit instruction against a naive N+1 rule).
+
+The phase's central, empirically-caught finding: **Semgrep's PHP matcher
+treats `->` and `::` as interchangeable when the receiver is a
+metavariable** — an unrestricted `$REQ->get(...)` taint-source pattern was
+confirmed to also match unrelated static calls sharing the same method
+name (`Storage::get(...)`, `Cache::get(...)`, `Model::query()`), producing
+a real false-positive Finding on constant, non-tainted code; the same
+issue independently broke the performance rule (`$MODEL::all()` also
+matching `$request->all()`, causing it to co-fire with the mass-assignment
+rule on the same line). Both fixed with `metavariable-regex` restrictions
+on the receiver, verified — via a dedicated real-Semgrep "rule quality
+gate" test suite exercising every rule's positive/negative/safe fixtures
+against the real binary — to eliminate every false positive found while
+preserving every genuine positive case. This is recorded prominently
+because it would not have been caught testing each rule in isolation,
+only by testing the whole ruleset together, exactly as this phase's own
+"false positive testing is the top priority" instruction anticipated.
+
+Also delivered: `metadata.remediation` (a new Semgrep-native YAML
+passthrough field, mirroring `cwe`/`references` exactly) wired into
+`FindingCandidate::$recommendation`; a CLI upgrade (`laradogs:audit` now
+prints each analyzer's actual findings — rule id, severity, file:line,
+message — not just a summary count, and `--json` gained a normalized
+`findings` array); `docs/testing/manual-audit.md`, the first-real-project
+manual test guide, with every documented command actually run first
+(including a real, encountered timeout on a large codebase, documented
+honestly rather than glossed over); and a "Try LaraDogs" README section.
+33 new tests (362 total). Ruleset version bumped `2026.09.1` → `2026.09.2`.
+No comprehensive Laravel-aware rule library (12 rules is a deliberate,
+small set — not a finished product), no authorization-bypass detection
+(evaluated and explicitly rejected as too false-positive-prone, per the
+phase's own instruction), no PHPStan/ESLint/OSV-Scanner/Trivy, no
+auto-fix/AI remediation, no dashboard, no MCP server, no inline
+suppression UX (the underlying lifecycle already supports it; only the
+UI/CLI to drive it is still missing).
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

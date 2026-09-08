@@ -28,7 +28,7 @@ it('returns exactly the ids find() can look up, and nothing for an unknown id', 
     expect(SemgrepRuleCatalog::find('not.a.real.rule'))->toBeNull();
 });
 
-it('is a deliberately small ruleset (2-5 rules) — this phase proves the vertical, not a full catalog', function () {
-    expect(count(SemgrepRuleCatalog::ruleIds()))->toBeGreaterThanOrEqual(2)
-        ->and(count(SemgrepRuleCatalog::ruleIds()))->toBeLessThanOrEqual(5);
+it('is a deliberately small ruleset (8-15 rules) — quality over rule count, never a full Laravel security scanner', function () {
+    expect(count(SemgrepRuleCatalog::ruleIds()))->toBeGreaterThanOrEqual(8)
+        ->and(count(SemgrepRuleCatalog::ruleIds()))->toBeLessThanOrEqual(15);
 });

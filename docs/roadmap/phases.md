@@ -83,17 +83,24 @@ OSV-Scanner, Trivy, Semgrep. This is also where scanner sandboxing
 
 **Execution note:** this phase's scope was delivered across several
 finer-grained execution sub-phases (tracked informally as "Phase 4",
-"Phase 4.1", "Phase 4.2", "Phase 4.2.1", "Phase 5" in commit history/ADR
-notes — a different numbering than this document's own coarse phase
-list): `composer audit` (real process execution + Docker), `npm audit`
-(+ registry/proxy trust hardening), and a Semgrep **foundation** (a small,
-2-5-rule bundled ruleset proving the Discovery → Engine → Findings
+"Phase 4.1", "Phase 4.2", "Phase 4.2.1", "Phase 5", "Phase 6" in commit
+history/ADR notes — a different numbering than this document's own coarse
+phase list): `composer audit` (real process execution + Docker),
+`npm audit` (+ registry/proxy trust hardening), a Semgrep **foundation**
+(a small, 3-rule bundled ruleset proving the Discovery → Engine → Findings
 vertical end-to-end — see [`../auditing/static-analysis.md`](../auditing/static-analysis.md)
-and [`../auditing/analyzers/semgrep.md`](../auditing/analyzers/semgrep.md))
+and [`../auditing/analyzers/semgrep.md`](../auditing/analyzers/semgrep.md)),
+and a **first Laravel-aware ruleset** on top of that foundation (9 more
+rules — SQL/raw-query, Blade/XSS, command execution, filesystem/path,
+open redirect, mass assignment, a second debug helper, a debug-config
+check, and one conservative performance hotspot; 12 rules total — see
+[`../auditing/rules/security-rules.md`](../auditing/rules/security-rules.md),
+[`../auditing/rules/quality-rules.md`](../auditing/rules/quality-rules.md),
+and [`../auditing/rules/performance-rules.md`](../auditing/rules/performance-rules.md))
 are done. **Still remaining from this phase's original scope:**
-OSV-Scanner, Trivy, and — importantly — the comprehensive Laravel-aware
-Semgrep rule library this foundation deliberately does not yet include
-(see [`../auditing/rules.md`](../auditing/rules.md)).
+OSV-Scanner, Trivy, and — importantly — the COMPREHENSIVE Laravel-aware
+Semgrep rule library this 12-rule set is only a deliberately small first
+slice of (see [`../auditing/rules.md`](../auditing/rules.md)).
 
 ## Phase 5 — Bug / Quality Analysis
 

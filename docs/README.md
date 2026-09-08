@@ -9,9 +9,12 @@ auditing will work" (auditing), and "how it connects to other tools"
 dashboard, MCP, most scanners, a comprehensive rule library — does not
 exist in code yet, though stack detection, orchestration, the Finding
 domain/lifecycle, real process execution, and three real scanners
-(`composer audit`, `npm audit`, and a small bundled Semgrep ruleset) now
-do. See [`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in
-and [`../README.md`](../README.md) for the Implemented/Planned split.
+(`composer audit`, `npm audit`, and a 12-rule bundled Semgrep ruleset,
+including a first Laravel-aware slice as of Phase 6) now do. See
+[`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in,
+[`testing/manual-audit.md`](testing/manual-audit.md) to try it against a
+real project, and [`../README.md`](../README.md) for the
+Implemented/Planned split.
 
 ## Architecture
 
@@ -60,14 +63,21 @@ and [`../README.md`](../README.md) for the Implemented/Planned split.
   registry/config security model (the phase's central finding), JSON
   schema, severity/confidence/coverage policy, and known limitations.
 - [`auditing/analyzers/semgrep.md`](auditing/analyzers/semgrep.md) —
-  **Implemented (Phase 5).** The third real scanner, and the first SAST
-  one: a small, bundled Semgrep ruleset, its rule-source-trust model (the
-  phase's central finding), JSON schema, and the first real use of
-  `AnalyzerCoverage::Explicit`.
+  **Implemented (Phase 5 foundation; Phase 6 rules).** The third real
+  scanner, and the first SAST one: a 12-rule bundled Semgrep ruleset, its
+  rule-source-trust model (the phase's central finding), JSON schema, and
+  the first real use of `AnalyzerCoverage::Explicit`.
 - [`auditing/static-analysis.md`](auditing/static-analysis.md) /
-  [`auditing/rules.md`](auditing/rules.md) — **Implemented (Phase 5,
-  foundation only).** The SAST vertical Semgrep is the first slice of, and
-  the rule catalog/identity/versioning conventions it establishes.
+  [`auditing/rules.md`](auditing/rules.md) — **Implemented (Phase 5
+  foundation; Phase 6 rules).** The SAST vertical Semgrep is the first
+  slice of, and the rule catalog/identity/versioning conventions it
+  establishes.
+- [`auditing/rules/security-rules.md`](auditing/rules/security-rules.md),
+  [`auditing/rules/quality-rules.md`](auditing/rules/quality-rules.md),
+  [`auditing/rules/performance-rules.md`](auditing/rules/performance-rules.md)
+  — **Implemented (Phase 6).** Every bundled rule's own detection logic,
+  severity/confidence rationale, false-positive analysis, and remediation
+  guidance.
 - [`auditing/findings-lifecycle.md`](auditing/findings-lifecycle.md) —
   **Implemented (Phase 3).** Finding identity/occurrences, fingerprinting,
   lifecycle, and auto-resolution safety — persistent, tested, now fed by
@@ -84,6 +94,14 @@ and [`../README.md`](../README.md) for the Implemented/Planned split.
 - [`auditing/overview.md`](auditing/overview.md) describes the still
   **planned** rest of the pipeline (more scanners, correlation, a
   comprehensive Laravel-aware rule library).
+
+## Testing
+
+- [`testing/manual-audit.md`](testing/manual-audit.md) — **Implemented
+  (Phase 6).** How to run LaraDogs against a real Laravel project: local
+  and Docker commands (all actually run before being documented), how to
+  interpret output, known limitations, how to report a false positive,
+  and the no-target-mutation guarantee.
 
 ## Integrations
 

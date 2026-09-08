@@ -1,10 +1,13 @@
 # Analyzer: Semgrep
 
-**Status: Implemented (Phase 5).** The third real analyzer, and the first
+**Status: Implemented (Phase 5 foundation; Phase 6 adds the first
+Laravel-aware rules).** The third real analyzer, and the first
 Static Application Security Testing (SAST) one:
 `App\Audit\Analyzers\Semgrep\SemgrepAnalyzer` runs LaraDogs' own small,
-bundled Semgrep ruleset against a project's first-party PHP source and
-normalizes matches into `FindingCandidate`s. See
+bundled Semgrep ruleset (12 rules as of Phase 6 — see
+[Rule catalog](#rule-catalog-resourcesauditsemgreprules) below) against a
+project's first-party PHP source and normalizes matches into
+`FindingCandidate`s. See
 [`../audit-engine.md`](../audit-engine.md) for the Engine contract this
 implements, [`../../development/process-execution.md`](../../development/process-execution.md)
 for the process-execution boundary it runs through,
@@ -15,13 +18,18 @@ for the rule-source-trust decision this phase introduces.
 
 ## Scope
 
-This phase exists to prove the Static Analysis vertical end-to-end:
+Phase 5 exists to prove the Static Analysis vertical end-to-end:
 Discovery → SemgrepAnalyzer → safe `ProcessRunner` → Semgrep → Semgrep JSON
 → `SemgrepParser` → `FindingCandidate` → Finding persistence → Finding
-lifecycle/safe resolution. It deliberately ships **2-5 simple, well-tested
-rules** (currently 3 — see [Rule catalog](#rule-catalog--resourcesauditsemgreprules))
-— **not** a comprehensive Laravel-aware rule library. Explicitly out of
-scope this phase: OSV-Scanner, Trivy, ESLint, PHPStan/Larastan against the
+lifecycle/safe resolution — shipping **2-5 simple, well-tested rules**
+(3, at the time) to prove it, deliberately **not** a comprehensive
+Laravel-aware rule library. Phase 6 builds on that proven vertical with
+the first genuinely useful Laravel-aware rules (9 more, 12 total — see
+[Rule catalog](#rule-catalog-resourcesauditsemgreprules) below and
+[`../rules/security-rules.md`](../rules/security-rules.md)) — still
+deliberately small (~8-15 rules, rule quality over rule count), still not
+a comprehensive scanner. Explicitly out of scope through both phases:
+OSV-Scanner, Trivy, ESLint, PHPStan/Larastan against the
 target, Pest/PHPUnit against the target, auto-fix, AI remediation, a
 dashboard, an MCP server, Git monitoring, a GitHub Action. See
 [`../static-analysis.md`](../static-analysis.md) for the broader SAST
@@ -350,9 +358,13 @@ before persistence, same as every other analyzer.
 - `title`: the rule's own message, first line only (bounded); falls back
   to `"Semgrep rule {ruleId} matched."` if the message is empty.
 - `description`: the rule's own full message.
+- `recommendation` (Phase 6): from `extra.metadata.remediation` when the
+  rule declares it — every rule in the bundled catalog does as of Phase 6.
+  Mirrors the `cwe`/`references` passthrough pattern exactly (a Semgrep
+  YAML `metadata:` field, never PHP-side content) — no new mechanism was
+  introduced for this, only a second field read from the same place.
 - `filePath`/`lineStart`/`lineEnd`/`codeSnippet`: see above.
-- `cwe`/`references`: from `extra.metadata` when the rule declares them
-  (only `laradogs.security.php.eval-usage` does today).
+- `cwe`/`references`: from `extra.metadata` when the rule declares them.
 - `ruleVersion`: `SemgrepRuleCatalog::RULESET_VERSION` (the bundled
   ruleset's own version — see [`../rules.md`](../rules.md)).
 - `analyzerVersion`: the resolved `semgrep --version` string.
@@ -403,6 +415,19 @@ Phase 4) already works, since `SemgrepAnalyzer` is registered in the same
 `AnalyzerRegistry` alongside `composer-audit`/`npm-audit`. Without
 `--analyzer`, all three coexist in the same run (see above).
 
+**Phase 6:** `AuditCommand` itself was extended (generically, not with
+any Semgrep-specific code) to also normalize and print each analyzer's
+`FindingCandidate`s — rule id, severity, category, confidence, file:line,
+and message for human output; a richer `findings` array (also including
+`recommendation`/`cwe`/`references`) for `--json`. Before this, the CLI
+only ever printed an analyzer's own summary/diagnostic count (e.g. "2
+finding(s) found"), never the findings themselves, which was not useful
+enough for a real manual audit — see
+[`../../testing/manual-audit.md`](../../testing/manual-audit.md). This
+uses the exact same `ProducesFindingCandidates::candidates()` call
+`ScanRunner` itself uses, just without ever invoking `ScanRecorder` — the
+command still persists nothing.
+
 ## Configuration
 
 `config/laradogs.php` gained one `semgrep` section:
@@ -429,20 +454,47 @@ columns from Phase 3/3.1.
 
 ## Rule catalog (`resources/audit/semgrep/rules/`)
 
-See [`../rules.md`](../rules.md) for the full convention. Bundled rules
-today (`App\Audit\Analyzers\Semgrep\SemgrepRuleCatalog::RULESET_VERSION =
-'2026.09.1'`):
+See [`../rules.md`](../rules.md) for the full convention, and
+[`../rules/security-rules.md`](../rules/security-rules.md),
+[`../rules/quality-rules.md`](../rules/quality-rules.md), and
+[`../rules/performance-rules.md`](../rules/performance-rules.md) for what
+each rule actually detects. Bundled rules today
+(`App\Audit\Analyzers\Semgrep\SemgrepRuleCatalog::RULESET_VERSION =
+'2026.09.2'`, bumped from Phase 5's `'2026.09.1'` when Phase 6 added the
+9 rules below the first three):
 
-| Rule id                                | Category | Confidence | Severity (YAML) |
-| -------------------------------------- | -------- | ---------- | --------------- |
-| `laradogs.quality.debug.dd-call`       | Quality  | High       | `WARNING`       |
-| `laradogs.quality.debug.var-dump-call` | Quality  | High       | `WARNING`       |
-| `laradogs.security.php.eval-usage`     | Security | Medium     | `ERROR`         |
+| Rule id                                               | Category      | Confidence | Severity (YAML) | Phase |
+| ----------------------------------------------------- | ------------- | ---------- | --------------- | ----- |
+| `laradogs.quality.debug.dd-call`                      | Quality       | High       | `WARNING`       | 5     |
+| `laradogs.quality.debug.var-dump-call`                | Quality       | High       | `WARNING`       | 5     |
+| `laradogs.security.php.eval-usage`                    | Security      | Medium     | `ERROR`         | 5     |
+| `laradogs.security.sql.tainted-raw-query`             | Security      | Medium     | `ERROR`         | 6     |
+| `laradogs.security.blade.raw-output-tainted`          | Security      | Medium     | `ERROR`         | 6     |
+| `laradogs.security.command.tainted-exec`              | Security      | Medium     | `ERROR`         | 6     |
+| `laradogs.security.filesystem.tainted-path`           | Security      | Medium     | `ERROR`         | 6     |
+| `laradogs.security.redirect.tainted-open-redirect`    | Security      | Medium     | `WARNING`       | 6     |
+| `laradogs.security.mass-assignment.request-all`       | Security      | Medium     | `WARNING`       | 6     |
+| `laradogs.quality.debug.ray-call`                     | Quality       | High       | `WARNING`       | 6     |
+| `laradogs.configuration.debug.app-debug-default-true` | Configuration | High       | `WARNING`       | 6     |
+| `laradogs.performance.eloquent.unbounded-all`         | Performance   | Low        | `INFO`          | 6     |
 
 Each rule id is asserted, by
 `tests/Unit/Audit/Analyzers/Semgrep/SemgrepRuleCatalogTest.php`, to appear
 verbatim in the actual bundled YAML file — a drift check, not a YAML
 parser.
+
+**Phase 6's six taint-mode rules** (SQL, command, filesystem, redirect —
+plus the generic-mode Blade heuristic and the plain-pattern mass
+assignment/performance rules) were the first to use Semgrep's `mode:
+taint` — verified, empirically, to be part of the OSS engine (not
+Pro-only) and to correctly propagate through assignment, string
+concatenation, and string interpolation, not just a literal
+argument-in-argument-out match. See
+[`../rules/security-rules.md`](../rules/security-rules.md) for the full
+per-rule false-positive analysis, including a real, empirically-caught
+cross-rule false positive (Semgrep's PHP matcher treats `->` and `::` as
+interchangeable when the receiver is a metavariable) that had to be fixed
+with `metavariable-regex` restrictions before these rules could ship.
 
 ## Docker
 
@@ -517,7 +569,8 @@ A second run without `--analyzer` confirmed `composer-audit` + `npm-audit`
   no-match/nonexistent roots.
 - `tests/Unit/Audit/Analyzers/Semgrep/SemgrepRuleCatalogTest.php` — the
   bundled YAML file exists, every catalog rule id appears verbatim in it,
-  `find()`/`ruleIds()` consistency, the "2-5 rules" size constraint.
+  `find()`/`ruleIds()` consistency, the "8-15 rules" size constraint
+  (Phase 6 — widened from Phase 5's "2-5 rules" proof-of-vertical range).
 - `tests/Feature/Audit/Analyzers/Semgrep/SemgrepAnalyzerTest.php` —
   applicability (PHP detected / not detected), availability (binary
   missing / version-check failure / version too old / available), argv
@@ -548,11 +601,25 @@ A second run without `--analyzer` confirmed `composer-audit` + `npm-audit`
   when run locally against the real, installed `semgrep` 1.176.0. The
   automated suite never requires a real Semgrep binary, network access, or
   Docker to pass.
+- `tests/Feature/Audit/Analyzers/Semgrep/SemgrepLaravelRulesRealBinaryTest.php`
+  (Phase 6) — the "rule quality gate" for all 9 new Laravel-aware rules:
+  for each one, a positive fixture line IS flagged and every negative/safe
+  fixture line is NOT, against the REAL `semgrep` binary (never
+  `FakeProcessRunner`) — see
+  [`tests/Fixtures/semgrep/rules/`](../../../tests/Fixtures/semgrep/rules/)
+  for the fixtures and [`../rules/security-rules.md`](../rules/security-rules.md)
+  for the false-positive analysis behind each one. Also opt-in, gated by
+  `LARADOGS_TEST_REAL_SEMGREP=1`.
+- `tests/Feature/Console/AuditCommandTest.php` (Phase 6) — the CLI's own
+  findings rendering: human output contains the rule id/file:line/message,
+  `--json` output's `findings` array includes `recommendation`, and an
+  analyzer with zero findings prints no "Findings" section at all.
 
 ### Manual verification performed
 
-All four `SemgrepAuditRealBinaryTest.php` cases were run locally
-(`LARADOGS_TEST_REAL_SEMGREP=1 php artisan test --filter=SemgrepAuditRealBinaryTest`)
+All four `SemgrepAuditRealBinaryTest.php` cases, plus all 10
+`SemgrepLaravelRulesRealBinaryTest.php` cases (Phase 6), were run locally
+(`LARADOGS_TEST_REAL_SEMGREP=1 php artisan test --filter=Semgrep...RealBinaryTest`)
 against the real, installed `semgrep` 1.176.0 — all passed. A real
 `docker compose build` + running container was used for the Docker
 validation described above; all containers/temp directories created for
@@ -560,9 +627,24 @@ verification were removed afterward.
 
 ## Known limitations
 
-- Only 2-5 rules exist — this is a proof of the vertical, not a Laravel
-  security scanner. The real rule library is future work (see
+- Only 12 rules exist (3 from Phase 5, 9 from Phase 6) — a small,
+  deliberately curated set proving the pattern works, not a comprehensive
+  Laravel security scanner. No complete SQL-injection/XSS/CSRF coverage,
+  no authorization-bypass detection (explicitly deferred — see
+  [`../rules/security-rules.md`](../rules/security-rules.md)'s own
+  discussion of why a naive "controller method without `authorize()`"
+  rule was rejected as too false-positive-prone), no N+1 detection. The
+  real, comprehensive rule library is future work (see
   [`../rules.md`](../rules.md) and [`../static-analysis.md`](../static-analysis.md)).
+- Phase 6's taint-mode rules are intraprocedural only — a tainted value
+  passed through another function/method before reaching a sink is not
+  tracked across that call boundary. See each rule's own "Limitations"
+  section in [`../rules/security-rules.md`](../rules/security-rules.md).
+- The Blade XSS rule (`laradogs.security.blade.raw-output-tainted`) is a
+  textual heuristic (Semgrep `generic` mode has no real dataflow) — it
+  only catches a DIRECT request-input call inside the raw-output block,
+  not a tainted variable assigned earlier and echoed by name. This is a
+  real, documented false-negative gap, not a false-positive risk.
 - `MIN_SUPPORTED_VERSION` (`1.176.0`) is conservative by construction, not
   research-backed across a version range: the exact fields this parser
   depends on (`paths.skipped[].reason` requiring `--verbose`, the dual

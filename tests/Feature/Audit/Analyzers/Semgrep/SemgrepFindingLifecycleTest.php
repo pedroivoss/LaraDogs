@@ -201,3 +201,89 @@ it('proves all 5 lifecycle cases end-to-end with the real SemgrepAnalyzer across
     // that subset) is proven generically, with analyzerId 'semgrep' among
     // others, in tests/Feature/Audit/Findings/ReconciliationTest.php.
 });
+
+/**
+ * The same verified-resolution + regression proof as above, but exercised
+ * against a Phase 6 rule (mass assignment) rather than the Phase 5
+ * dd()/var_dump() rules — proves a newly-added rule id correctly
+ * participates in the same Explicit-coverage-driven lifecycle mechanism
+ * once it becomes part of `SemgrepRuleCatalog::ruleIds()`, not just the
+ * original 3-rule catalog.
+ */
+function massAssignmentFindingJson(string $projectPath): string
+{
+    return json_encode([
+        'version' => '1.176.0',
+        'results' => [[
+            'check_id' => 'laradogs.security.mass-assignment.request-all',
+            'path' => $projectPath.'/app/Controller.php',
+            'start' => ['line' => 5, 'col' => 9, 'offset' => 0],
+            'end' => ['line' => 5, 'col' => 40, 'offset' => 0],
+            'extra' => ['message' => 'mass assignment via ->all()', 'severity' => 'WARNING', 'metadata' => []],
+        ]],
+        'errors' => [],
+        'paths' => ['scanned' => [$projectPath.'/app/Controller.php'], 'skipped' => []],
+    ]);
+}
+
+function cleanScanJson(string $projectPath): string
+{
+    return json_encode([
+        'version' => '1.176.0',
+        'results' => [],
+        'errors' => [],
+        'paths' => ['scanned' => [$projectPath.'/app/Controller.php'], 'skipped' => []],
+    ]);
+}
+
+it('proves a Phase 6 rule (mass-assignment) participates correctly in verified resolution and regression', function () {
+    $discovery = (new ProjectDiscovery)->discover(dirname(__DIR__, 4).'/Fixtures/semgrep/php-project');
+    expect($discovery->isSuccessful())->toBeTrue();
+
+    $context = new AuditContext(runId: 'phase6-rule-lifecycle', projectPath: $discovery->path, profile: $discovery->profile);
+    $project = Project::query()->create(['name' => 'Semgrep Phase 6 Rule Lifecycle Fixture', 'path' => $context->projectPath]);
+
+    // --- Scan 1: mass-assignment finding observed -> Open. ---
+    runSemgrepScan($project, $context, new FakeProcessRunner(
+        new ProcessResult(0, '1.176.0', '', false, false, 5),
+        new ProcessResult(0, massAssignmentFindingJson($discovery->path), '', false, false, 20),
+    ));
+
+    $finding = Finding::query()
+        ->where('analyzer_id', 'semgrep')
+        ->where('rule_id', 'laradogs.security.mass-assignment.request-all')
+        ->firstOrFail();
+
+    expect($finding->status)->toBe(FindingStatus::Open)
+        ->and($finding->category->value)->toBe('security')
+        ->and($finding->severity->value)->toBe('medium');
+
+    $execution = ScanAnalyzerExecution::query()->where('analyzer_id', 'semgrep')->latest('id')->first();
+    expect($execution->coverage->mode->value)->toBe('explicit')
+        ->and($execution->coverage->ruleIds)->toContain('laradogs.security.mass-assignment.request-all');
+
+    // --- Verified resolution: Scan 2 runs cleanly (Explicit coverage over
+    // the full, now-12-rule catalog, zero errors), the finding is no
+    // longer observed -> it auto-resolves. ---
+    runSemgrepScan($project, $context, new FakeProcessRunner(
+        new ProcessResult(0, '1.176.0', '', false, false, 5),
+        new ProcessResult(0, cleanScanJson($discovery->path), '', false, false, 20),
+    ));
+
+    expect($finding->fresh()->status)->toBe(FindingStatus::Resolved);
+
+    // --- Regression: Scan 3 observes the same issue again -> the
+    // previously-Resolved finding reopens automatically, with the
+    // regression recorded in its status history. ---
+    runSemgrepScan($project, $context, new FakeProcessRunner(
+        new ProcessResult(0, '1.176.0', '', false, false, 5),
+        new ProcessResult(0, massAssignmentFindingJson($discovery->path), '', false, false, 20),
+    ));
+
+    expect($finding->fresh()->status)->toBe(FindingStatus::Open);
+
+    $reopenEvent = $finding->statusHistory()->latest('id')->first();
+    expect($reopenEvent->previous_status)->toBe(FindingStatus::Resolved)
+        ->and($reopenEvent->new_status)->toBe(FindingStatus::Open)
+        ->and($reopenEvent->reason)->toContain('Reopened automatically');
+});

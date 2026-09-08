@@ -6,6 +6,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 6: First Laravel-Aware Ruleset
+
+### Added
+
+- **9 new Semgrep rules** on top of Phase 5's 3 proof-of-vertical rules
+  (12 total; `SemgrepRuleCatalog::RULESET_VERSION` bumped `2026.09.1` →
+  `2026.09.2`), chosen for signal/noise ratio over count: `laradogs.security.sql.tainted-raw-query`,
+  `laradogs.security.blade.raw-output-tainted`,
+  `laradogs.security.command.tainted-exec`,
+  `laradogs.security.filesystem.tainted-path`,
+  `laradogs.security.redirect.tainted-open-redirect`,
+  `laradogs.security.mass-assignment.request-all`,
+  `laradogs.quality.debug.ray-call`,
+  `laradogs.configuration.debug.app-debug-default-true`,
+  `laradogs.performance.eloquent.unbounded-all`. See
+  `docs/auditing/rules/security-rules.md`,
+  `docs/auditing/rules/quality-rules.md`, and
+  `docs/auditing/rules/performance-rules.md` for what each detects,
+  severity/confidence rationale, false-positive analysis, and remediation.
+- **Semgrep taint-mode rules** (SQL/command/filesystem/redirect) — the
+  first rules in the bundled ruleset to use real source→sink dataflow
+  propagation (assignment, string concatenation, string interpolation),
+  verified to be part of the OSS engine, not Pro-only.
+- `metadata.remediation` — a new, Semgrep-native YAML `metadata:` field
+  (mirroring the existing `cwe`/`references` passthrough pattern exactly)
+  read into `FindingCandidate::$recommendation`. Every bundled rule
+  declares one.
+- `AuditCommand` (`laradogs:audit`) now normalizes and prints each
+  analyzer's `FindingCandidate`s — rule id, severity, category,
+  confidence, file:line, and message for human output; a richer
+  `findings` JSON array (also including `recommendation`/`cwe`/
+  `references`) for `--json`. Previously the CLI only ever printed an
+  analyzer's own summary/diagnostic count, never the findings themselves.
+- `docs/testing/manual-audit.md` — the first-real-project manual test
+  guide: local/Docker commands (all verified against a real project before
+  documenting), expected output, known limitations, how to report a false
+  positive, and the no-target-mutation guarantee.
+- A "Try LaraDogs" section in the top-level `README.md`.
+- 33 new tests, including a 10-case "rule quality gate" opt-in suite
+  against the real `semgrep` binary
+  (`SemgrepLaravelRulesRealBinaryTest.php`) proving every new rule's
+  positive fixtures ARE flagged and every negative/safe fixture is NOT,
+  a `AuditCommandTest.php` for the CLI findings rendering, and an
+  additional Finding-lifecycle proof (verified resolution + regression)
+  using a Phase 6 rule specifically, not just the original 3.
+
+### Fixed
+
+- **A real, empirically-caught false-positive source**: Semgrep's PHP
+  matcher treats `->` (method call) and `::` (static call) as
+  interchangeable when the receiver is a metavariable. An unrestricted
+  `$REQ->get(...)` taint-source pattern was confirmed to also match
+  unrelated static calls sharing the same method name (`Storage::get(...)`,
+  `Cache::get(...)`, `Model::query()`), producing a false-positive Finding
+  on constant, non-tainted code. Fixed with `metavariable-regex`
+  restrictions on every affected source/sink pattern, verified to
+  eliminate the false positive while preserving every genuine positive
+  case. See `docs/auditing/rules/security-rules.md`'s own cross-cutting
+  note on this issue.
+- The same class of issue in `laradogs.performance.eloquent.unbounded-all`
+  (`$MODEL::all()` was also matching `$request->all()`), fixed the same
+  way (`metavariable-regex: ^[A-Z]` on the receiver).
+
 ## [Unreleased] — Phase 5: Static Analysis Foundation + Semgrep
 
 ### Added

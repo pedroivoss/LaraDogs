@@ -214,9 +214,14 @@ Phase 7.
   `SemgrepParser`/`SemgrepCoverageEvaluator`/`SemgrepTargetCollector`/
   `SemgrepRuleCatalog` unit tests, `SemgrepAnalyzer` feature tests, a
   Semgrep end-to-end pipeline test, the 5-case Finding lifecycle proof
-  against the real analyzer, and 4 opt-in real-`semgrep`-binary tests —
-  329 tests total (318 passing + 11 opt-in, network/real-binary-dependent
-  tests skipped by default), all passing. See
+  against the real analyzer, and 4 opt-in real-`semgrep`-binary tests;
+  Phase 6 adds a 10-case "rule quality gate" opt-in suite against the real
+  `semgrep` binary proving every new Laravel-aware rule's positive/
+  negative/safe fixtures, `AuditCommand` findings-rendering tests, and a
+  second Finding-lifecycle proof (verified resolution + regression) using
+  a Phase 6 rule specifically — 343 tests total (322 passing + 21 opt-in,
+  network/real-binary-dependent tests skipped by default), all passing.
+  See
   [`../development/testing.md`](../development/testing.md) and
   [`../development/process-execution.md`](../development/process-execution.md).
 - `tests/Support/Engine/Analyzers/` — synthetic `Analyzer` implementations
@@ -251,6 +256,12 @@ Phase 7.
   exclusion proof, `clean-project`, `ignore-bypass-project` with a real
   `.semgrepignore`/`.gitignore`, `malicious-execution-project` with a
   `system()` call that must never actually run).
+- `tests/Fixtures/semgrep/rules/` (Phase 6) — one fixture file per
+  Laravel-aware rule, each with clearly-labeled positive (must be
+  flagged), negative (unrelated/constant, must not be flagged), and safe
+  (a real mitigation the rule's own sanitizer patterns recognize, must not
+  be flagged) cases — validated against the real `semgrep` binary by
+  `tests/Feature/Audit/Analyzers/Semgrep/SemgrepLaravelRulesRealBinaryTest.php`.
 
 ## Tooling already wired by the starter kit
 

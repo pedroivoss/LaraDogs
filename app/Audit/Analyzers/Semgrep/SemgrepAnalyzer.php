@@ -395,6 +395,7 @@ final class SemgrepAnalyzer implements Analyzer, ProducesFindingCandidates
             confidence: $confidence,
             title: $this->titleFor($ruleId, $message),
             description: $message !== '' ? $message : null,
+            recommendation: is_string($metadata['remediation'] ?? null) ? $metadata['remediation'] : null,
             filePath: $relativePath,
             lineStart: $startLine > 0 ? $startLine : null,
             lineEnd: $endLine > 0 ? $endLine : null,

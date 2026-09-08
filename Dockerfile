@@ -18,6 +18,12 @@ ARG NODE_VERSION=22
 # months from now can't silently ship a different Composer than the one
 # this image was last verified against.
 ARG COMPOSER_VERSION=2.10.3
+# Pinned Semgrep CLI version (Phase 5 —
+# App\Audit\Analyzers\Semgrep\SemgrepAnalyzer::MIN_SUPPORTED_VERSION), never
+# a floating `pip install semgrep` with no version pin. Semgrep is Python-based
+# and needed only by the RUNTIME stage (auditing target projects) — never by
+# the builder stage, which has no Python involved in building LaraDogs itself.
+ARG SEMGREP_VERSION=1.176.0
 
 # Named stage (not a bare `COPY --from=composer:${COMPOSER_VERSION}`)
 # because BuildKit doesn't support variable expansion directly in
@@ -115,6 +121,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends gnupg \
 
 RUN groupadd --gid 1000 laradogs \
     && useradd --uid 1000 --gid laradogs --shell /bin/bash --create-home laradogs
+
+# Semgrep for static analysis (Phase 5 — App\Audit\Analyzers\Semgrep\SemgrepAnalyzer).
+# Semgrep's own official Docker image (semgrep/semgrep) is Alpine/musl-based
+# and ships a thin Python entrypoint backed by a full site-packages tree
+# (verified by inspecting it directly — `/usr/bin/semgrep` is a `#!/usr/bin/python3`
+# script, not a standalone binary the way Composer's PHAR is) — its Python
+# build is not portable to this image's glibc/Debian base, so "copy just the
+# binary from the official image" (Composer's strategy) does not apply here.
+# Instead: a dedicated virtualenv under `/opt/semgrep-venv`, entirely isolated
+# from both the system Python and LaraDogs' own PHP/Node dependencies (never
+# touches `/app`), with `pip install` pinned to the exact `SEMGREP_VERSION`
+# above — never `pip install semgrep` unpinned, and never `--pre`/`latest`.
+ARG SEMGREP_VERSION
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 \
+        python3-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv /opt/semgrep-venv \
+    && /opt/semgrep-venv/bin/pip install --no-cache-dir "semgrep==${SEMGREP_VERSION}"
+
+ENV PATH="/opt/semgrep-venv/bin:${PATH}"
 
 # The real Composer binary this image ships to run `composer audit`
 # against a target project — reused from the builder stage (same pinned

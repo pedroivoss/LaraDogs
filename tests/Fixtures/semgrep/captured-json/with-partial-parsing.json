@@ -1,0 +1,33 @@
+{
+    "version": "1.176.0",
+    "results": [
+        {
+            "check_id": "laradogs.quality.debug.dd-call",
+            "path": "/targets/app/Good.php",
+            "start": {"line": 2, "col": 1, "offset": 6},
+            "end": {"line": 2, "col": 6, "offset": 11},
+            "extra": {
+                "message": "dd() halts execution and dumps variable state.",
+                "metadata": {},
+                "severity": "WARNING",
+                "fingerprint": "requires login",
+                "lines": "requires login",
+                "validation_state": "NO_VALIDATOR",
+                "engine_kind": "OSS"
+            }
+        }
+    ],
+    "errors": [
+        {
+            "code": 3,
+            "level": "warn",
+            "type": ["PartialParsing", [{"path": "/targets/app/Bad.php", "start": {"line": 2, "col": 1, "offset": 0}, "end": {"line": 3, "col": 6, "offset": 47}}]],
+            "message": "Syntax error at line /targets/app/Bad.php:2:\n `function totally { broken syntax here [[[` was unexpected",
+            "path": "/targets/app/Bad.php"
+        }
+    ],
+    "paths": {
+        "scanned": ["/targets/app/Bad.php", "/targets/app/Good.php"],
+        "skipped": []
+    }
+}

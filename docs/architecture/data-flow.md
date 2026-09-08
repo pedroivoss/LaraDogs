@@ -76,10 +76,10 @@ AuditRunResult (runId, plan, one AnalyzerExecution per item, timing)
 
 No `Finding` is produced and nothing is persisted by the engine itself —
 see [`../auditing/audit-engine.md`](../auditing/audit-engine.md) and
-[ADR-0009](decisions/ADR-0009-audit-engine-foundation.md). As of Phase 4.2
-two real analyzers are registered (`composer-audit`, `npm-audit`) and
-`Process/` has one real implementation both reuse unchanged — see the
-next two sections.
+[ADR-0009](decisions/ADR-0009-audit-engine-foundation.md). As of Phase 5
+three real analyzers are registered (`composer-audit`, `npm-audit`,
+`semgrep`) and `Process/` has one real implementation all three reuse
+unchanged — see the next three sections.
 
 ## Implemented: Composer Audit + real process execution (Phase 4)
 
@@ -182,6 +182,70 @@ project's own `.npmrc` registry override ineffective. See
 for the full investigation, including a documented residual gap
 (scoped `@scope:registry=` overrides).
 
+## Implemented: Semgrep (Phase 5)
+
+```
+CLI / ScanRunner (same two entry points as Composer/npm Audit above)
+  ▼
+ProjectDiscovery::discover() (unchanged — applicability reads php.isDetected())
+  ▼
+AuditEngine::run(context)  [ registry: ComposerAuditAnalyzer, NpmAuditAnalyzer, SemgrepAnalyzer ]
+  │  applicability(profile): PHP detected (bundled ruleset is PHP-only)
+  │  availability(context): binary resolved (LaraDogs' own config/PATH
+  │    only) + `semgrep --version` >= 1.176.0, via the SAME ProcessRunner
+  ▼
+SemgrepTargetCollector::collect(projectPath) → list<absolute .php path>
+  │  bounded, symlink-rejecting, realpath-contained walk; excludes
+  │  vendor/, node_modules/, storage/, bootstrap/cache/, public/build/,
+  │  dist/, coverage/, .git/ — a LaraDogs-controlled list, never derived
+  │  from the target's own .gitignore
+  ▼
+SemgrepAnalyzer::run(context)
+  │  SymfonyProcessRunner::run(ProcessCommand(
+  │    argv: [semgrep, scan, --config, <bare rules filename>, --json,
+  │           --verbose, --metrics=off, --no-git-ignore, --oss-only,
+  │           --timeout=<N>, --max-target-bytes=<N>, <file1>, <file2>, ...],
+  │    cwd: the BUNDLED RULES' OWN DIRECTORY (not the project path — this
+  │         is what makes Semgrep's own check_id come back clean/unprefixed),
+  │    env: explicit allowlist + ALWAYS-forced SEMGREP_SETTINGS_FILE +
+  │         SEMGREP_SEND_METRICS=off (SEMGREP_APP_TOKEN never allowlisted),
+  │    timeout: configured))
+  │  → timedOut / processStartFailed / outputTruncated / non-zero exit
+  │    (a genuine config/rule-load failure for Semgrep, unlike Composer/
+  │    npm) / malformed JSON all fail closed
+  ▼
+SemgrepParser::parse(stdout, knownRuleIds) → SemgrepScanReport
+  │  (dedicated parser; matches each check_id against SemgrepRuleCatalog's
+  │   known ids by exact-or-suffix match — never trusts check_id verbatim)
+  ▼
+SemgrepCoverageEvaluator::isFullyCovered(report)
+  │  Explicit(catalog rule ids) only when zero errors[] AND no non-benign
+  │  paths.skipped[] reason — Unknown the moment there's any doubt
+  ▼
+AnalyzerResult (Passed, rawMetadata: findings/errors/skipped/semgrep_version,
+  │             coverage: Explicit or Unknown — see semgrep.md#coverage)
+  ▼
+SemgrepAnalyzer::candidates(context, result) → list<FindingCandidate>
+  │  path normalized to project-relative; codeSnippet read directly from
+  │  the source file (Semgrep's own `extra.lines` requires a login and is
+  │  never used) and redacted via the existing EvidenceRedactor
+  ▼
+[ persisted path only ] ScanRunner (same, unchanged instance already
+  looking up composer-audit/npm-audit above) also looks up semgrep and
+  hands its candidates to the same ScanRecorder → Finding /
+  FindingOccurrence persisted, independently identified
+```
+
+The central Phase 5 research finding: pointing Semgrep at a DIRECTORY lets
+the target's own `.semgrepignore` hide a file from analysis entirely
+(reproduced directly) — mitigated by never doing that: `SemgrepTargetCollector`
+performs its own file walk and every target is passed as an explicit argv
+path instead, verified to bypass `.semgrepignore`/`.gitignore` regardless
+of what either file says. See
+[`../auditing/analyzers/semgrep.md`](../auditing/analyzers/semgrep.md) and
+[ADR-0012](decisions/ADR-0012-trusted-static-analysis-rules.md) for the
+full investigation and trust-boundary decision.
+
 ## Implemented: Finding ingestion and lifecycle (Phase 3)
 
 ```
@@ -220,13 +284,14 @@ above.
 Not implemented. Recorded here so the eventual implementation has a
 target shape consistent with
 [ADR-0002](decisions/ADR-0002-application-architecture.md) and
-[ADR-0004](decisions/ADR-0004-scanner-execution-strategy.md). Phases 1–4.2
+[ADR-0004](decisions/ADR-0004-scanner-execution-strategy.md). Phases 1–5
 (above) already deliver stack detection, orchestration, real process
-execution, two real scanners (`composer audit`, `npm audit`), and
-persistence/lifecycle; what's missing is: more real analyzers (PHPStan/
-Larastan, ESLint, Semgrep, OSV-Scanner, Trivy, ...), correlating the same
-underlying issue across multiple scanners into one `Finding`,
-Laravel-aware rules layered on top of generic scanner output, and
+execution, three real scanners (`composer audit`, `npm audit`, a small
+bundled Semgrep ruleset), and persistence/lifecycle; what's missing is:
+more real analyzers/rules (PHPStan/Larastan, ESLint, OSV-Scanner, Trivy,
+and — most importantly — a comprehensive Laravel-aware Semgrep rule
+library beyond this phase's 3 proof-of-vertical rules), correlating the
+same underlying issue across multiple scanners into one `Finding`, and
 exposure beyond the plain `laradogs:audit` CLI (MCP tool, Dashboard).
 
 ```
@@ -236,18 +301,18 @@ CLI / MCP tool / Dashboard "Run Scan" action
 Audit Core: stack detection (Project Discovery — implemented)
   ▼
 Audit Core: analyzer selection (Audit Engine planning — implemented;
-  │  two real analyzers registered, composer-audit + npm-audit,
-  │  coexisting deterministically — Phase 4 / Phase 4.2)
+  │  three real analyzers registered, composer-audit + npm-audit + semgrep,
+  │  coexisting deterministically — Phase 4 / Phase 4.2 / Phase 5)
   ▼
 Audit Core: analyzer execution
   │  (real analyzers, isolated subprocess via the SAME ProcessRunner —
-  │   implemented for both composer-audit and npm-audit; more analyzers
-  │   TODO)
+  │   implemented for composer-audit, npm-audit, and semgrep; more
+  │   analyzers TODO)
   ▼
 Audit Core: normalization
   │  (raw scanner output → FindingCandidate — implemented, with
-  │   composer-audit (Phase 4) and npm-audit (Phase 4.2) as real
-  │   producers)
+  │   composer-audit (Phase 4), npm-audit (Phase 4.2), and semgrep
+  │   (Phase 5) as real producers)
   ▼
 Audit Core: correlation + deduplication
   │  (same underlying issue reported by MULTIPLE scanners → one Finding —
@@ -257,7 +322,9 @@ Audit Core: correlation + deduplication
   ▼
 Audit Core: Laravel-aware rule pass
   │  (framework-specific heuristics layered on top of generic scanner
-  │   output — not started)
+  │   output — a first, deliberately minimal foundation exists as of
+  │   Phase 5, 3 bundled Semgrep rules proving the vertical; the
+  │   comprehensive rule library itself is not started)
   ▼
 Persistence: Finding ingestion + lifecycle (implemented, Phase 3 — see above)
   ▼
@@ -268,6 +335,7 @@ Findings ──▶ CLI output (implemented, Phase 4) / MCP tool response /
 Every "Audit Core" box now corresponds to real code
 (`app/Audit/Discovery/`, `app/Audit/Engine/`, `app/Audit/Analyzers/`,
 `app/Audit/Findings/`) for at least one scanner end-to-end; what remains
-is breadth (more scanners), correlation across them, and Laravel-aware
-rules. See [`components.md`](components.md) for what exists today, and
+is breadth (more scanners/rules), correlation across them, and a
+comprehensive Laravel-aware rule library. See
+[`components.md`](components.md) for what exists today, and
 [`../roadmap/roadmap.md`](../roadmap/roadmap.md) for phase status.

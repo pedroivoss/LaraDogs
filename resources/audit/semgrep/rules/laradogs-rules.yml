@@ -1,0 +1,56 @@
+# LaraDogs' own bundled Semgrep ruleset — Phase 5 (Static Analysis
+# Foundation). This is deliberately a small, empirically-verified proof of
+# the Static Analysis vertical (Discovery -> SemgrepAnalyzer -> Semgrep ->
+# SemgrepParser -> FindingCandidate -> Finding lifecycle), not yet the
+# comprehensive Laravel-aware rule library — that is future work (see
+# docs/auditing/rules.md).
+#
+# Every rule id here is enumerated verbatim in
+# App\Audit\Analyzers\Semgrep\SemgrepRuleCatalog::RULES — the single source
+# of truth SemgrepParser matches Semgrep's own `check_id` output against
+# (see that class and docs/auditing/analyzers/semgrep.md#rule-identity for
+# why `check_id` itself is never trusted as a clean, stable string).
+#
+# `laradogs_category`/`laradogs_confidence` deliberately do NOT live in this
+# file's `metadata:` blocks — those are LaraDogs-specific concepts Semgrep
+# has no notion of, and keeping them only in SemgrepRuleCatalog (PHP) avoids
+# two sources of truth silently drifting apart. `metadata.cwe`/
+# `metadata.references` below ARE read back from Semgrep's own JSON output
+# (`extra.metadata`) — genuinely Semgrep-native passthrough fields, so no
+# YAML parsing is ever done on the LaraDogs/PHP side of this file.
+rules:
+    - id: laradogs.quality.debug.dd-call
+      languages: [php]
+      severity: WARNING
+      message: >-
+          dd() halts execution and dumps variable state — left in code, it will
+          break the request that reaches it in production. Remove before
+          shipping.
+      patterns:
+          - pattern: dd(...)
+
+    - id: laradogs.quality.debug.var-dump-call
+      languages: [php]
+      severity: WARNING
+      message: >-
+          var_dump() prints raw variable state directly into the response body
+          and should not ship to production; use structured logging instead.
+      patterns:
+          - pattern: var_dump(...)
+
+    - id: laradogs.security.php.eval-usage
+      languages: [php]
+      severity: ERROR
+      message: >-
+          eval() executes a string as PHP code — a common source of remote code
+          execution vulnerabilities whenever any part of that string can be
+          influenced by user input. Avoid eval() entirely; if dynamic behavior is
+          truly required, use an explicit, restricted alternative (a lookup
+          table, `match`, or a whitelisted callable map).
+      metadata:
+          cwe:
+              - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code ('Eval Injection')"
+          references:
+              - https://cwe.mitre.org/data/definitions/95.html
+      patterns:
+          - pattern: eval(...)

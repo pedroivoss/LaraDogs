@@ -1,0 +1,21 @@
+{
+    "version": "1.176.0",
+    "results": [
+        {
+            "check_id": "some-other-namespace.totally-unexpected-rule",
+            "path": "/targets/app/Debug.php",
+            "start": {"line": 3, "col": 5, "offset": 20},
+            "end": {"line": 3, "col": 14, "offset": 29},
+            "extra": {
+                "message": "This rule id is not in SemgrepRuleCatalog and must never be attributed.",
+                "metadata": {},
+                "severity": "WARNING"
+            }
+        }
+    ],
+    "errors": [],
+    "paths": {
+        "scanned": ["/targets/app/Debug.php"],
+        "skipped": []
+    }
+}

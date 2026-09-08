@@ -3,8 +3,11 @@
 **Status: Implemented (Phase 4).** `App\Audit\Engine\Process\ProcessRunner`
 is the boundary every real analyzer must use to shell out to an external
 tool — recorded as a contract in Phase 2, implemented here for the first
-time by `SymfonyProcessRunner`, and reused unchanged by both real
-analyzers since (`composer-audit`, Phase 4; `npm-audit`, Phase 4.2). See
+time by `SymfonyProcessRunner`, and reused unchanged by all three real
+analyzers since (`composer-audit`, Phase 4; `npm-audit`, Phase 4.2;
+`semgrep`, Phase 5 — see
+[`../auditing/analyzers/semgrep.md`](../auditing/analyzers/semgrep.md)).
+See
 [ADR-0011](../architecture/decisions/ADR-0011-safe-external-process-execution.md)
 for the decision behind this design, and
 [`../auditing/analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md)
@@ -158,6 +161,15 @@ which this existing allowlist mechanism forwards automatically. See
 [`../auditing/analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md#docker-impact)
 for the full account, including a real, read-only-mounted-target
 verification.
+
+`SemgrepAnalyzer` (Phase 5) follows the identical pattern: it forces
+`SEMGREP_SETTINGS_FILE` (never merely forwarded from the allowlist) to a
+LaraDogs-controlled path, and never adds Semgrep's own login/API-token
+variable (`SEMGREP_APP_TOKEN`) to the allowlist at all — see
+[`../auditing/analyzers/semgrep.md`](../auditing/analyzers/semgrep.md#telemetry--network)
+for the full research, and
+[`docker.md`](docker.md#semgrep-in-the-runtime-image) for its Docker
+packaging.
 
 ### Timeout
 

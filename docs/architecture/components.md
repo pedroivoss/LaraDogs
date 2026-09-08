@@ -3,26 +3,27 @@
 This describes what exists in the repository today — the Laravel starter
 kit foundation from Phase 0, Project Discovery (Phase 1), the Audit
 Engine foundation (Phase 2), the Finding domain/lifecycle (Phase 3), the
-first real analyzer/process-execution implementation (Phase 4), and a
-second real analyzer (Phase 4.2) — not the full target audit
-architecture. See [`overview.md`](overview.md) for that.
+first real analyzer/process-execution implementation (Phase 4), a second
+real analyzer (Phase 4.2), and the first static analyzer / SAST
+foundation (Phase 5) — not the full target audit architecture. See
+[`overview.md`](overview.md) for that.
 
 ## Backend (`app/`)
 
-| Path                             | Purpose                                                                                                                                                                                                     |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app/Actions/Fortify/`           | Fortify action classes (user creation, password validation/reset) — starter-kit auth, not LaraDogs-specific.                                                                                                |
-| `app/Audit/Discovery/`           | **Project Discovery Core** (Phase 1) — see below.                                                                                                                                                           |
-| `app/Audit/Engine/`              | **Audit Engine foundation** (Phase 2), now with a real `ProcessRunner` (Phase 4) — see below.                                                                                                               |
-| `app/Audit/Findings/`            | **Finding domain services** (Phase 3), now with `ScanRunner`/`ProducesFindingCandidates` (Phase 4) — see below.                                                                                             |
-| `app/Audit/Analyzers/`           | **Real analyzer implementations** (Phase 4: Composer; Phase 4.2: npm) — the outer namespace depending on both Engine and Findings — see below.                                                              |
-| `app/Http/Controllers/`          | Inertia page controllers and Fortify-adjacent controllers.                                                                                                                                                  |
-| `app/Http/Controllers/Settings/` | User settings pages (profile, password, appearance, two-factor, passkeys).                                                                                                                                  |
-| `app/Http/Middleware/`           | `HandleAppearance` (theme cookie) and `HandleInertiaRequests` (shared Inertia props).                                                                                                                       |
-| `app/Http/Requests/`             | Form request validation classes.                                                                                                                                                                            |
-| `app/Models/`                    | `User` (starter-kit); `Audit/` — persistence models (Phase 3) — see below.                                                                                                                                  |
-| `app/Providers/`                 | `AppServiceProvider` — Fortify bindings, plus `ProcessRunner` → `SymfonyProcessRunner` (Phase 4) and a singleton `AnalyzerRegistry` with `composer-audit` (Phase 4) and `npm-audit` (Phase 4.2) registered. |
-| `app/Console/Commands/`          | `InspectProjectCommand` (`laradogs:inspect`, Phase 1); `AuditCommand` (`laradogs:audit`, Phase 4) — thin CLI adapters, no detection/analyzer logic of their own.                                            |
+| Path                             | Purpose                                                                                                                                                                                                                           |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/Actions/Fortify/`           | Fortify action classes (user creation, password validation/reset) — starter-kit auth, not LaraDogs-specific.                                                                                                                      |
+| `app/Audit/Discovery/`           | **Project Discovery Core** (Phase 1) — see below.                                                                                                                                                                                 |
+| `app/Audit/Engine/`              | **Audit Engine foundation** (Phase 2), now with a real `ProcessRunner` (Phase 4) — see below.                                                                                                                                     |
+| `app/Audit/Findings/`            | **Finding domain services** (Phase 3), now with `ScanRunner`/`ProducesFindingCandidates` (Phase 4) — see below.                                                                                                                   |
+| `app/Audit/Analyzers/`           | **Real analyzer implementations** (Phase 4: Composer; Phase 4.2: npm; Phase 5: Semgrep) — the outer namespace depending on both Engine and Findings — see below.                                                                  |
+| `app/Http/Controllers/`          | Inertia page controllers and Fortify-adjacent controllers.                                                                                                                                                                        |
+| `app/Http/Controllers/Settings/` | User settings pages (profile, password, appearance, two-factor, passkeys).                                                                                                                                                        |
+| `app/Http/Middleware/`           | `HandleAppearance` (theme cookie) and `HandleInertiaRequests` (shared Inertia props).                                                                                                                                             |
+| `app/Http/Requests/`             | Form request validation classes.                                                                                                                                                                                                  |
+| `app/Models/`                    | `User` (starter-kit); `Audit/` — persistence models (Phase 3) — see below.                                                                                                                                                        |
+| `app/Providers/`                 | `AppServiceProvider` — Fortify bindings, plus `ProcessRunner` → `SymfonyProcessRunner` (Phase 4) and a singleton `AnalyzerRegistry` with `composer-audit` (Phase 4), `npm-audit` (Phase 4.2), and `semgrep` (Phase 5) registered. |
+| `app/Console/Commands/`          | `InspectProjectCommand` (`laradogs:inspect`, Phase 1); `AuditCommand` (`laradogs:audit`, Phase 4) — thin CLI adapters, no detection/analyzer logic of their own.                                                                  |
 
 ### Project Discovery (`app/Audit/Discovery/`)
 
@@ -51,10 +52,12 @@ separate concern, implemented under `app/Audit/Findings/`/
 
 Orchestration between a `ProjectProfile` and real scanner integrations.
 As of Phase 4, `Process/` has a real implementation
-(`SymfonyProcessRunner`), reused unchanged by every analyzer since. Two
+(`SymfonyProcessRunner`), reused unchanged by every analyzer since. Three
 real analyzers are registered in production, coexisting deterministically
 in one registry: `App\Audit\Analyzers\Composer\ComposerAuditAnalyzer`
-(Phase 4) and `App\Audit\Analyzers\Npm\NpmAuditAnalyzer` (Phase 4.2). Full
+(Phase 4), `App\Audit\Analyzers\Npm\NpmAuditAnalyzer` (Phase 4.2), and
+`App\Audit\Analyzers\Semgrep\SemgrepAnalyzer` (Phase 5 — the first to use
+`AnalyzerCoverage::Explicit`). Full
 detail, lifecycle, and security boundary:
 [`../auditing/audit-engine.md`](../auditing/audit-engine.md); the decision
 behind the Analyzer contract: [ADR-0009](decisions/ADR-0009-audit-engine-foundation.md);
@@ -71,8 +74,9 @@ the decision behind process execution:
 | `Execution/`       | `ExecutionStatus`, `AnalyzerResult`, `AnalyzerDiagnostic`/`DiagnosticLevel`, `AnalyzerCoverage`/`CoverageMode` (Phase 3.1 — what an analyzer declares it actually verified, separate from `status`), `AnalyzerExecution`, `AuditRunResult`. |
 | `Process/`         | `ProcessRunner` (interface), `ProcessCommand`, `ProcessResult`, `SymfonyProcessRunner` (Phase 4 — the real, argv-only, env-allowlisted, output-capped implementation).                                                                      |
 
-`ComposerAuditAnalyzer` (`app/Audit/Analyzers/Composer/`) and
-`NpmAuditAnalyzer` (`app/Audit/Analyzers/Npm/`) are the two real
+`ComposerAuditAnalyzer` (`app/Audit/Analyzers/Composer/`),
+`NpmAuditAnalyzer` (`app/Audit/Analyzers/Npm/`), and `SemgrepAnalyzer`
+(`app/Audit/Analyzers/Semgrep/`) are the three real
 `Analyzer`s registered in production (see
 `App\Providers\AppServiceProvider`); synthetic ones for exercising the
 engine itself still live under `tests/Support/Engine/Analyzers/`.
@@ -105,13 +109,15 @@ the decision behind identity/fingerprinting/lifecycle:
 | `Findings/Ingestion/ProducesFindingCandidates.php`                                                | Phase 4 — implemented by a concrete outer-layer analyzer to normalize its own `AnalyzerResult` into `FindingCandidate`s, without `Analyzer`/Engine ever depending on Findings. |
 | `Findings/Ingestion/ScanRunner.php`                                                               | Phase 4 — the orchestration seam: runs a real `AuditEngine`, then normalizes every `ProducesFindingCandidates` analyzer's result and hands it to `ScanRecorder`.               |
 
-`ComposerAuditAnalyzer` (Phase 4) and `NpmAuditAnalyzer` (Phase 4.2) are
-the real producers of a `FindingCandidate`. `config/laradogs.php` holds a
-placeholder `version` string recorded on every scan (no release/tagging
-scheme exists yet), plus `process.*`/`composer.*` (Phase 4) and `npm.*`
-(Phase 4.2) settings — see
-[`analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md)
-and [`analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md).
+`ComposerAuditAnalyzer` (Phase 4), `NpmAuditAnalyzer` (Phase 4.2), and
+`SemgrepAnalyzer` (Phase 5) are the real producers of a
+`FindingCandidate`. `config/laradogs.php` holds a placeholder `version`
+string recorded on every scan (no release/tagging scheme exists yet),
+plus `process.*`/`composer.*` (Phase 4), `npm.*` (Phase 4.2), and
+`semgrep.*` (Phase 5) settings — see
+[`analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md),
+[`analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md), and
+[`analyzers/semgrep.md`](../auditing/analyzers/semgrep.md).
 
 ### Analyzers (`app/Audit/Analyzers/`)
 
@@ -119,22 +125,32 @@ The outer namespace for concrete, real analyzers — the only place in the
 codebase allowed to depend on BOTH `App\Audit\Engine` and
 `App\Audit\Findings` at once (see
 [ADR-0011](decisions/ADR-0011-safe-external-process-execution.md),
+[ADR-0012](decisions/ADR-0012-trusted-static-analysis-rules.md),
 [`../auditing/analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md),
-and [`../auditing/analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md)).
-`Composer/` and `Npm/` deliberately do NOT share a base class — a small
-amount of structural duplication between the two was accepted rather than
-force a premature shared abstraction (see npm-audit.md's own rationale).
+[`../auditing/analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md),
+and [`../auditing/analyzers/semgrep.md`](../auditing/analyzers/semgrep.md)).
+`Composer/`, `Npm/`, and `Semgrep/` deliberately do NOT share a base
+class — a small amount of structural duplication between them was
+accepted rather than force a premature shared abstraction (see
+npm-audit.md's own rationale).
 
-| Path                                                       | Purpose                                                                                                                                |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `Composer/ComposerAuditAnalyzer.php`                       | Implements both `Analyzer` and `ProducesFindingCandidates`; runs `composer audit --locked --no-plugins --no-scripts`.                  |
-| `Composer/ComposerBinaryResolver.php`                      | Resolves the `composer` executable from LaraDogs' own config/PATH only — never from the target.                                        |
-| `Composer/ComposerAuditParser.php`                         | Dedicated, defensive JSON parser for `composer audit --format=json` — kept separate from `ProcessRunner` and the analyzer.             |
-| `Composer/ComposerAdvisory.php`, `ComposerAuditReport.php` | Parsed-report value objects.                                                                                                           |
-| `Npm/NpmAuditAnalyzer.php`                                 | Implements both `Analyzer` and `ProducesFindingCandidates`; runs `npm audit --package-lock-only --ignore-scripts --registry=<pinned>`. |
-| `Npm/NpmBinaryResolver.php`                                | Resolves the `npm` executable from LaraDogs' own config/PATH only — never `./node_modules/.bin/npm` from the target.                   |
-| `Npm/NpmAuditParser.php`                                   | Dedicated, defensive JSON parser for `npm audit --json` — kept separate from `ProcessRunner` and the analyzer.                         |
-| `Npm/NpmAdvisory.php`, `NpmAuditReport.php`                | Parsed-report value objects.                                                                                                           |
+| Path                                                       | Purpose                                                                                                                                                                                         |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Composer/ComposerAuditAnalyzer.php`                       | Implements both `Analyzer` and `ProducesFindingCandidates`; runs `composer audit --locked --no-plugins --no-scripts`.                                                                           |
+| `Composer/ComposerBinaryResolver.php`                      | Resolves the `composer` executable from LaraDogs' own config/PATH only — never from the target.                                                                                                 |
+| `Composer/ComposerAuditParser.php`                         | Dedicated, defensive JSON parser for `composer audit --format=json` — kept separate from `ProcessRunner` and the analyzer.                                                                      |
+| `Composer/ComposerAdvisory.php`, `ComposerAuditReport.php` | Parsed-report value objects.                                                                                                                                                                    |
+| `Npm/NpmAuditAnalyzer.php`                                 | Implements both `Analyzer` and `ProducesFindingCandidates`; runs `npm audit --package-lock-only --ignore-scripts --registry=<pinned>`.                                                          |
+| `Npm/NpmBinaryResolver.php`                                | Resolves the `npm` executable from LaraDogs' own config/PATH only — never `./node_modules/.bin/npm` from the target.                                                                            |
+| `Npm/NpmAuditParser.php`                                   | Dedicated, defensive JSON parser for `npm audit --json` — kept separate from `ProcessRunner` and the analyzer.                                                                                  |
+| `Npm/NpmAdvisory.php`, `NpmAuditReport.php`                | Parsed-report value objects.                                                                                                                                                                    |
+| `Semgrep/SemgrepAnalyzer.php`                              | Implements both `Analyzer` and `ProducesFindingCandidates`; runs `semgrep scan --config <bundled rules> --json --verbose --metrics=off` against an explicit, LaraDogs-collected file list.      |
+| `Semgrep/SemgrepBinaryResolver.php`                        | Resolves the `semgrep` executable from LaraDogs' own config/PATH only — never from the target.                                                                                                  |
+| `Semgrep/SemgrepTargetCollector.php`                       | Bounded, symlink-rejecting, realpath-contained file walk — builds the explicit target list that bypasses `.semgrepignore`/`.gitignore`.                                                         |
+| `Semgrep/SemgrepParser.php`                                | Dedicated, defensive JSON parser for `semgrep scan --json` — matches `check_id` against the known rule catalog rather than trusting it verbatim.                                                |
+| `Semgrep/SemgrepCoverageEvaluator.php`                     | Decides Explicit-vs-Unknown coverage from a scan's `errors`/`skipped` — see [`../auditing/analyzers/semgrep.md`](../auditing/analyzers/semgrep.md#coverage-the-first-analyzer-to-use-explicit). |
+| `Semgrep/SemgrepRuleCatalog.php`, `SemgrepRule.php`        | The bundled ruleset manifest — rule ids, `AnalyzerCategory`/`Confidence` policy, ruleset version.                                                                                               |
+| `Semgrep/SemgrepFinding.php`, `SemgrepScanReport.php`      | Parsed-report value objects.                                                                                                                                                                    |
 
 ## Frontend (`resources/js/`)
 
@@ -194,9 +210,13 @@ Phase 7.
   Phase 4.1 adds Docker-adjacent env-allowlist/read-only-target tests;
   Phase 4.2 adds Discovery's new `npmLockfile` detection tests,
   `NpmAuditParser`/`NpmAuditAnalyzer` tests, an npm end-to-end pipeline
-  test, and a Composer+npm multi-analyzer coexistence test — 260 tests
-  total (254 passing + 6 opt-in, network-dependent tests skipped by
-  default), all passing. See
+  test, and a Composer+npm multi-analyzer coexistence test; Phase 5 adds
+  `SemgrepParser`/`SemgrepCoverageEvaluator`/`SemgrepTargetCollector`/
+  `SemgrepRuleCatalog` unit tests, `SemgrepAnalyzer` feature tests, a
+  Semgrep end-to-end pipeline test, the 5-case Finding lifecycle proof
+  against the real analyzer, and 4 opt-in real-`semgrep`-binary tests —
+  329 tests total (318 passing + 11 opt-in, network/real-binary-dependent
+  tests skipped by default), all passing. See
   [`../development/testing.md`](../development/testing.md) and
   [`../development/process-execution.md`](../development/process-execution.md).
 - `tests/Support/Engine/Analyzers/` — synthetic `Analyzer` implementations
@@ -206,7 +226,7 @@ Phase 7.
   issue) used by the Finding domain's own tests.
 - `tests/Support/Process/FakeProcessRunner.php` (Phase 4) — a scripted
   `ProcessRunner` test double; never spawns a real process. Reused
-  unchanged by both `composer-audit` and `npm-audit` tests.
+  unchanged by `composer-audit`, `npm-audit`, and `semgrep` tests.
 - `tests/Fixtures/discovery/` — small, synthetic project fixtures (never
   real projects) used by Discovery's, the Composer analyzer's (Phase 4),
   and the npm analyzer's (Phase 4.2 — includes dedicated
@@ -224,6 +244,13 @@ Phase 7.
   fixtures (clean, direct vulnerability, transitive/meta-vulnerability,
   malformed, registry-error, missing-lockfile-error, unrecognized/older
   schema, truncated).
+- `tests/Fixtures/semgrep/` (Phase 5) — `captured-json/` (synthetic
+  `semgrep scan --json` fixtures: clean, with-findings, unrecognized rule
+  id, partial-parsing, benign/dangerous skip, invalid-rule-config-error)
+  and small real PHP fixture projects (`php-project` with a `vendor/`
+  exclusion proof, `clean-project`, `ignore-bypass-project` with a real
+  `.semgrepignore`/`.gitignore`, `malicious-execution-project` with a
+  `system()` call that must never actually run).
 
 ## Tooling already wired by the starter kit
 

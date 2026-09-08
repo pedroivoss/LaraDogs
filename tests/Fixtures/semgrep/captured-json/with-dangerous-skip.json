@@ -1,0 +1,11 @@
+{
+    "version": "1.176.0",
+    "results": [],
+    "errors": [],
+    "paths": {
+        "scanned": [],
+        "skipped": [
+            {"path": "/targets/app/Huge.php", "reason": "exceeded_size_limit"}
+        ]
+    }
+}

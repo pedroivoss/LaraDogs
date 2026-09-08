@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Audit\Analyzers\Composer\ComposerAuditAnalyzer;
 use App\Audit\Analyzers\Npm\NpmAuditAnalyzer;
+use App\Audit\Analyzers\Semgrep\SemgrepAnalyzer;
 use App\Audit\Engine\Process\ProcessRunner;
 use App\Audit\Engine\Process\SymfonyProcessRunner;
 use App\Audit\Engine\Registry\AnalyzerRegistry;
@@ -26,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
             $registry = new AnalyzerRegistry;
             $registry->register($this->app->make(ComposerAuditAnalyzer::class));
             $registry->register($this->app->make(NpmAuditAnalyzer::class));
+            $registry->register($this->app->make(SemgrepAnalyzer::class));
 
             return $registry;
         });

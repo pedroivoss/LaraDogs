@@ -1,0 +1,6 @@
+{
+    "name": "fixture/semgrep-php-project",
+    "require": {
+        "php": "^8.2"
+    }
+}

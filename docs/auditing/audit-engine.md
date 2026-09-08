@@ -1,17 +1,23 @@
 # Audit Engine (Foundation)
 
 **Status: Implemented (Phase 2 foundation; Phase 4/4.2 add real analyzers
-and the process-execution implementation).**
+and the process-execution implementation; Phase 5 adds the first static
+analyzer).**
 This is the orchestration layer between a `ProjectProfile` (Phase 1) and
 real scanner integrations. It does not itself detect anything about a
 project (that's Discovery) and never runs a scanner directly — that's
-each concrete `Analyzer`'s own job, via `ProcessRunner`. As of Phase 4.2,
-two real analyzers are registered in production, deterministically
+each concrete `Analyzer`'s own job, via `ProcessRunner`. As of Phase 5,
+three real analyzers are registered in production, deterministically
 coexisting in the same registry:
-`App\Audit\Analyzers\Composer\ComposerAuditAnalyzer` and
-`App\Audit\Analyzers\Npm\NpmAuditAnalyzer` — see
-[`analyzers/composer-audit.md`](analyzers/composer-audit.md) and
-[`analyzers/npm-audit.md`](analyzers/npm-audit.md). See
+`App\Audit\Analyzers\Composer\ComposerAuditAnalyzer`,
+`App\Audit\Analyzers\Npm\NpmAuditAnalyzer`, and
+`App\Audit\Analyzers\Semgrep\SemgrepAnalyzer` — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md),
+[`analyzers/npm-audit.md`](analyzers/npm-audit.md), and
+[`analyzers/semgrep.md`](analyzers/semgrep.md). `SemgrepAnalyzer` is the
+first analyzer to use `AnalyzerCoverage::Explicit` in production — see
+that doc's [Coverage](analyzers/semgrep.md#coverage-the-first-analyzer-to-use-explicit)
+section. See
 [ADR-0009](../architecture/decisions/ADR-0009-audit-engine-foundation.md)
 for the engine's own foundational decisions and
 [ADR-0011](../architecture/decisions/ADR-0011-safe-external-process-execution.md)
@@ -74,12 +80,18 @@ QUALITY | CONFIGURATION | TEST`, mirroring the `Finding` category list
   considered and left out for now.
 
 The first real `Analyzer` implementation, `ComposerAuditAnalyzer`, was
-added in Phase 4; the second, `NpmAuditAnalyzer`, in Phase 4.2 — see
-[`analyzers/composer-audit.md`](analyzers/composer-audit.md) and
-[`analyzers/npm-audit.md`](analyzers/npm-audit.md). Both coexist
+added in Phase 4; the second, `NpmAuditAnalyzer`, in Phase 4.2; the third,
+`SemgrepAnalyzer`, in Phase 5 — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md),
+[`analyzers/npm-audit.md`](analyzers/npm-audit.md), and
+[`analyzers/semgrep.md`](analyzers/semgrep.md). All three coexist
 deterministically in the same `AnalyzerRegistry` (unique ids, no
-collision) and one failing does not affect the other's result — see
-`tests/Feature/Audit/MultiAnalyzerCoexistenceTest.php`. Synthetic
+collision) and one failing does not affect the others' results — see
+`tests/Feature/Audit/MultiAnalyzerCoexistenceTest.php` (Composer/npm) and
+`tests/Feature/Audit/Analyzers/Semgrep/SemgrepAuditEndToEndTest.php`
+(Composer/Semgrep; also verified manually with all three together in a
+real Docker container — see [`../development/docker.md`](../development/docker.md)).
+Synthetic
 ones for testing the engine itself still live under
 `tests/Support/Engine/Analyzers/` (never autoloaded in production) — see
 [Fake analyzers](#fake-analyzers).
@@ -260,11 +272,12 @@ Under `tests/Support/Engine/Analyzers/` (never autoloaded in production):
 
 ## CLI
 
-**IMPLEMENTED (Phase 4; Phase 4.2 confirms it works unmodified with two
-analyzers registered):** `php artisan laradogs:audit {path} [--json]
-[--analyzer=composer-audit|npm-audit]` — see
-[`analyzers/composer-audit.md`](analyzers/composer-audit.md#cli) and
-[`analyzers/npm-audit.md`](analyzers/npm-audit.md#24-cli) for details. It
+**IMPLEMENTED (Phase 4; Phase 4.2/Phase 5 confirm it works unmodified with
+three analyzers registered):** `php artisan laradogs:audit {path} [--json]
+[--analyzer=composer-audit|npm-audit|semgrep]` — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md#cli),
+[`analyzers/npm-audit.md`](analyzers/npm-audit.md#24-cli), and
+[`analyzers/semgrep.md`](analyzers/semgrep.md#cli) for details. It
 prints one real `AuditRunResult` and deliberately does not persist a
 `Scan` (see those docs for why). Omitting `--analyzer` runs every
 applicable, available analyzer in the registry — confirmed live against

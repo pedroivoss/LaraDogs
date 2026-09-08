@@ -79,12 +79,13 @@ Three-stage build (`Dockerfile`):
    of it — see below).
 3. **`runtime`** — a fresh `php:8.3-cli-bookworm` with `pdo_sqlite`,
    `sqlite3`, `curl` (for the healthcheck), the real `composer` binary
-   (Phase 4.1), and (Phase 4.2) a real Node.js + npm installation added.
+   (Phase 4.1), a real Node.js + npm installation (Phase 4.2), and (Phase 5) a real Semgrep CLI installed into an isolated Python virtualenv.
    Runs as a non-root user (`laradogs`, uid 1000), not root. No dev
    dependencies, no LaraDogs-frontend build toolchain ship in this layer —
-   see [Node/npm in the runtime image](#nodenpm-in-the-runtime-image)
-   below for why Node/npm are installed directly rather than copied from
-   `builder` the way Composer's binary is.
+   see [Node/npm in the runtime image](#nodenpm-in-the-runtime-image) and
+   [Semgrep in the runtime image](#semgrep-in-the-runtime-image) below for
+   why each is installed the way it is, rather than copied from `builder`
+   the way Composer's binary is.
 
 A `HEALTHCHECK` hits the app's built-in `/up` route (registered via
 Laravel's `health:` routing option in `bootstrap/app.php`, not custom
@@ -215,6 +216,60 @@ code/config, identical in Docker and locally. Re-verified with a real
 `:ro` still produced a correct, real `Passed` audit result inside the
 image, with Composer unaffected.
 
+## Semgrep in the runtime image
+
+**Status: Implemented (Phase 5).** Semgrep's own official Docker image
+(`semgrep/semgrep`) was inspected directly before choosing a strategy
+(`docker run --rm --entrypoint sh semgrep/semgrep:1.176.0 -c 'cat
+/usr/bin/semgrep; readlink -f /usr/bin/semgrep'`): it is
+Alpine/musl-based, and `/usr/bin/semgrep` is a thin
+`#!/usr/bin/python3` script backed by a full Python `site-packages` tree —
+not a standalone binary the way Composer's PHAR is, and not portable to
+this image's glibc/Debian `bookworm` base by copying just the file (unlike
+Composer's `COPY --from=composer_bin` strategy).
+
+Instead, `runtime` installs `python3`/`python3-venv` via apt, creates an
+isolated virtualenv at `/opt/semgrep-venv`, and `pip install`s Semgrep
+pinned to a new `SEMGREP_VERSION` build ARG (default `1.176.0`, matching
+`App\Audit\Analyzers\Semgrep\SemgrepAnalyzer::MIN_SUPPORTED_VERSION`) —
+never `latest`, never an unpinned `pip install semgrep`. The venv is
+entirely separate from both the system Python and LaraDogs' own PHP/Node
+dependencies, and never touches `/app`. Semgrep is only needed by
+`runtime` — the `builder` stage has no Python involved in building
+LaraDogs itself, so nothing was added there.
+
+Verified with a real `docker compose build` + a running (non-root,
+healthy) container:
+
+- `semgrep --version` → `1.176.0`; `composer --version` → `2.10.3`;
+  `node --version` → `v22.23.2`; `npm --version` → `10.9.8` — **no
+  Composer/npm regression** from adding Semgrep to the same `runtime`
+  stage.
+- `php artisan laradogs:audit <fixture> --analyzer=semgrep` against a
+  **read-only-mounted** (`:ro`) PHP fixture correctly reported 2 findings
+  with `coverage: explicit`.
+- Omitting `--analyzer` entirely correctly ran `composer-audit` +
+  `npm-audit` + `semgrep` together in one invocation, with each
+  analyzer's own applicability/failure behavior against that fixture
+  unaffected by the other two being present.
+- The read-only-mounted fixture directory was confirmed byte-for-byte
+  unmodified after both runs.
+- **Image size impact: approximately +382MB (798MB → 1.18GB)** for
+  Python 3 + the Semgrep virtualenv — a real, measured, and accepted cost
+  of a Python-based static analysis engine; not optimized in this phase
+  (no destructive image-slimming attempted).
+- All test containers and temp directories created for this verification
+  were removed afterward; nothing was left running.
+
+Semgrep's own settings file (`SEMGREP_SETTINGS_FILE`, always forced by
+`SemgrepAnalyzer` to `config('laradogs.semgrep.settings_path')`, default
+`storage_path('app/laradogs/semgrep-settings.yml')`) needs **zero
+Dockerfile changes** — confirmed empirically (mirroring npm's own
+`NPM_CONFIG_USERCONFIG` behavior) that Semgrep creates both the parent
+directory and the settings file on demand when the path doesn't exist yet,
+and `storage/app` is already `laradogs`-owned via the existing
+`COPY --chown=laradogs:laradogs . .` step.
+
 ## Why not Nginx + PHP-FPM (yet)
 
 Phase 0 explicitly avoids over-building Docker before there's an audit
@@ -231,6 +286,12 @@ work, tracked in [`../roadmap/roadmap.md`](../roadmap/roadmap.md).
   Composer binary was never copied into `runtime`; see
   [Composer in the runtime image](#composer-in-the-runtime-image) above
   for how this was closed.)
+- **Adding Semgrep (Phase 5) grew the `runtime` image by ~382MB
+  (798MB → 1.18GB)** — a real, accepted cost of a Python-based static
+  analysis engine, not optimized in this phase. No destructive
+  image-slimming (multi-stage venv copy-out, Alpine-based runtime, etc.)
+  was attempted under this phase's time pressure — see
+  [Semgrep in the runtime image](#semgrep-in-the-runtime-image) above.
 - Only `pdo_sqlite`/`sqlite3` PHP extensions are installed — no
   `pdo_mysql`/`pdo_pgsql` in this image (see
   [Database support](#database-support) above); a future scanner that

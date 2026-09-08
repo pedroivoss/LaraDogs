@@ -6,11 +6,12 @@ auditing will work" (auditing), and "how it connects to other tools"
 (integrations) are separate concerns.
 
 **Status: Early Development.** Most of what LaraDogs is _for_ — the
-dashboard, MCP, most scanners — does not exist in code yet, though stack
-detection, orchestration, the Finding domain/lifecycle, real process
-execution, and two real scanners (`composer audit`, `npm audit`) now do.
-See [`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in and
-[`../README.md`](../README.md) for the Implemented/Planned split.
+dashboard, MCP, most scanners, a comprehensive rule library — does not
+exist in code yet, though stack detection, orchestration, the Finding
+domain/lifecycle, real process execution, and three real scanners
+(`composer audit`, `npm audit`, and a small bundled Semgrep ruleset) now
+do. See [`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in
+and [`../README.md`](../README.md) for the Implemented/Planned split.
 
 ## Architecture
 
@@ -45,10 +46,11 @@ See [`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in and
   what it detects, its security model, and CLI usage. Not auditing: no
   scanners run, no `Finding` is produced.
 - [`auditing/audit-engine.md`](auditing/audit-engine.md) — **Implemented
-  (Phase 2 foundation; Phase 4/4.2 real analyzers/process execution).**
+  (Phase 2 foundation; Phase 4/4.2/5 real analyzers/process execution).**
   The Analyzer contract, applicability vs. availability, planning,
-  execution, and result normalization — now running two real analyzers
-  (`composer-audit`, `npm-audit`) through the same real `ProcessRunner`.
+  execution, and result normalization — now running three real analyzers
+  (`composer-audit`, `npm-audit`, `semgrep`) through the same real
+  `ProcessRunner`.
 - [`auditing/analyzers/composer-audit.md`](auditing/analyzers/composer-audit.md)
   — **Implemented (Phase 4, Docker-hardened Phase 4.1).** The first real
   scanner: `composer audit`, its safety model, JSON schema,
@@ -57,11 +59,20 @@ See [`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in and
   **Implemented (Phase 4.2).** The second real scanner: `npm audit`, its
   registry/config security model (the phase's central finding), JSON
   schema, severity/confidence/coverage policy, and known limitations.
+- [`auditing/analyzers/semgrep.md`](auditing/analyzers/semgrep.md) —
+  **Implemented (Phase 5).** The third real scanner, and the first SAST
+  one: a small, bundled Semgrep ruleset, its rule-source-trust model (the
+  phase's central finding), JSON schema, and the first real use of
+  `AnalyzerCoverage::Explicit`.
+- [`auditing/static-analysis.md`](auditing/static-analysis.md) /
+  [`auditing/rules.md`](auditing/rules.md) — **Implemented (Phase 5,
+  foundation only).** The SAST vertical Semgrep is the first slice of, and
+  the rule catalog/identity/versioning conventions it establishes.
 - [`auditing/findings-lifecycle.md`](auditing/findings-lifecycle.md) —
   **Implemented (Phase 3).** Finding identity/occurrences, fingerprinting,
   lifecycle, and auto-resolution safety — persistent, tested, now fed by
-  two real analyzers' observations (Phase 4, Phase 4.2) alongside
-  synthetic ones in tests.
+  three real analyzers' observations (Phase 4, Phase 4.2, Phase 5)
+  alongside synthetic ones in tests.
     - [`auditing/findings.md`](auditing/findings.md) — the `Finding`/
       `FindingOccurrence` field reference.
     - [`auditing/severity.md`](auditing/severity.md)
@@ -71,8 +82,8 @@ See [`roadmap/roadmap.md`](roadmap/roadmap.md) for what phase we're in and
   — **Implemented (Phase 4).** The real `ProcessRunner`/`SymfonyProcessRunner`
   safety model: argv-only, env allowlisting, timeouts, output capping.
 - [`auditing/overview.md`](auditing/overview.md) describes the still
-  **planned** rest of the pipeline (more scanners, correlation,
-  Laravel-aware rules).
+  **planned** rest of the pipeline (more scanners, correlation, a
+  comprehensive Laravel-aware rule library).
 
 ## Integrations
 

@@ -183,6 +183,24 @@ a trust gap in HOW the audit data is fetched is not the same as gaining a
 verifiable universe of WHAT was checked. See
 [`analyzers/npm-audit.md`](analyzers/npm-audit.md#10-coverage).
 
+### `Explicit` coverage, finally exercised for real (Phase 5)
+
+`semgrep` (Phase 5) is the first analyzer where the `Explicit`/`Full`
+modes' original design premise actually holds: a static-analysis ruleset
+DOES have an enumerable "rules executed this run" universe (the bundled
+`SemgrepRuleCatalog`), unlike the dependency-advisory analyzers above.
+`SemgrepAnalyzer` declares `AnalyzerCoverage::explicit(...)` whenever a
+run reported zero operational errors/warnings and no non-benign skipped
+files (see
+[`analyzers/semgrep.md#coverage`](analyzers/semgrep.md#coverage-the-first-analyzer-to-use-explicit)
+for the exact, conservative decision rule), and falls back to `Unknown`
+the moment there's any doubt. All 5 lifecycle cases this document
+describes below are proven against the real analyzer, across real
+successive scans, in
+`tests/Feature/Audit/Analyzers/Semgrep/SemgrepFindingLifecycleTest.php` —
+not just the generic mechanism (already covered analyzer-agnostically by
+`tests/Feature/Audit/Findings/ReconciliationTest.php`).
+
 ### Auto-resolution safety
 
 **The single most important safety rule in this domain.** A finding may

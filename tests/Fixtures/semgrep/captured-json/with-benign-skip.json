@@ -1,0 +1,11 @@
+{
+    "version": "1.176.0",
+    "results": [],
+    "errors": [],
+    "paths": {
+        "scanned": ["/targets/app/Sample.php"],
+        "skipped": [
+            {"path": "/targets/resources/js/app.js", "reason": "wrong_language"}
+        ]
+    }
+}

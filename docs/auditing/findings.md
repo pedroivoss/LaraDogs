@@ -1,16 +1,17 @@
 # Findings
 
-**Status: Implemented (Phase 3; Phase 4 adds the first real producer).**
+**Status: Implemented (Phase 3; Phase 4/4.2/5 add real producers).**
 `Finding`/`FindingOccurrence` are real, persistent, tested models — see
 [`findings-lifecycle.md`](findings-lifecycle.md) for ingestion, lifecycle,
 and auto-resolution safety, and
 [ADR-0010](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md)
-for the design decisions. As of Phase 4, one real analyzer
-(`composer-audit`, see
-[`analyzers/composer-audit.md`](analyzers/composer-audit.md)) produces
-real `FindingCandidate`s from real `composer audit` advisories; synthetic
-candidates are still used throughout this domain's own unit/integration
-tests.
+for the design decisions. As of Phase 5, three real analyzers
+(`composer-audit`, `npm-audit`, and `semgrep` — see
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md),
+[`analyzers/npm-audit.md`](analyzers/npm-audit.md), and
+[`analyzers/semgrep.md`](analyzers/semgrep.md)) produce real
+`FindingCandidate`s; synthetic candidates are still used throughout this
+domain's own unit/integration tests.
 
 A finding is the atomic unit of everything LaraDogs reports — never raw
 scanner stdout, a Semgrep result, a Composer advisory, or a CVE directly;

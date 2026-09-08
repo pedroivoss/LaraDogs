@@ -6,6 +6,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 5: Static Analysis Foundation + Semgrep
+
+### Added
+
+- `App\Audit\Analyzers\Semgrep\SemgrepAnalyzer` — the third real analyzer,
+  and the first Static Application Security Testing (SAST) one: runs
+  LaraDogs' own small, bundled Semgrep ruleset (`resources/audit/semgrep/rules/`,
+  3 rules) against a project's first-party PHP source, via the SAME real
+  `SymfonyProcessRunner`. Proves the full Discovery → Engine → Semgrep →
+  `FindingCandidate` → Finding persistence/lifecycle vertical, deliberately
+  NOT yet a comprehensive Laravel-aware rule library.
+- `SemgrepBinaryResolver`, `SemgrepTargetCollector`, `SemgrepParser`,
+  `SemgrepCoverageEvaluator`, `SemgrepRuleCatalog`/`SemgrepRule`,
+  `SemgrepFinding`/`SemgrepScanReport` — the supporting classes, mirroring
+  the shape of the existing Composer/npm analyzers without sharing a base
+  class with them.
+- `AnalyzerCoverage::Explicit` is genuinely exercised in production for
+  the first time: `SemgrepCoverageEvaluator` declares it only when a run
+  reported zero operational errors/warnings and no non-benign skipped
+  files, falling back to `Unknown` the moment there's any doubt. All 5
+  required Finding lifecycle cases (verified resolution, removed rule,
+  failed analyzer, unknown coverage, regression) are proven against the
+  real analyzer across successive scans.
+- `config('laradogs.semgrep.*')` — binary override, timeout, per-file
+  timeout, max target bytes, and a forced `SEMGREP_SETTINGS_FILE` path.
+- `docs/auditing/analyzers/semgrep.md`, `docs/auditing/static-analysis.md`,
+  `docs/auditing/rules.md`, and
+  [ADR-0012](docs/architecture/decisions/ADR-0012-trusted-static-analysis-rules.md)
+  (Trusted Static Analysis Rules).
+- Semgrep added to the Docker `runtime` stage via an isolated Python
+  virtualenv (`/opt/semgrep-venv`), version-pinned via a new
+  `SEMGREP_VERSION` build ARG — verified with a real `docker compose
+build` + running container: no Composer/npm regression,
+  `composer-audit` + `npm-audit` + `semgrep` all coexist in one run,
+  read-only-mounted target confirmed byte-for-byte unchanged.
+  Image-size impact: ~382MB (798MB → 1.18GB).
+- 69 new tests (329 total; 318 passing + 11 opt-in real-network/
+  real-binary tests skipped by default), including 4 opt-in tests against
+  the real `semgrep` binary and one comprehensive multi-scan Finding
+  lifecycle test.
+
+### Fixed / researched
+
+- **A real, reproduced trust gap**: pointing `semgrep scan` at a
+  directory lets the target's own `.semgrepignore` hide a
+  genuinely-vulnerable file from analysis entirely, with zero error
+  signal. Mitigated by never doing that: `SemgrepTargetCollector`
+  performs LaraDogs' own bounded, symlink-rejecting, realpath-contained
+  file walk and passes every collected file as an explicit `semgrep scan`
+  argv target instead — verified to bypass `.semgrepignore`/`.gitignore`
+  regardless of what either file says.
+- Confirmed Semgrep's `check_id` embeds a mangled form of the `--config`
+  path's directory unless invoked with a bare filename from that file's
+  own directory as cwd — `SemgrepParser` matches `check_id` against the
+  known rule catalog by exact-or-suffix match rather than ever trusting
+  it verbatim.
+- Confirmed `paths.skipped` (size-limit skips, etc.) is silently empty
+  without `--verbose`, even though the skip genuinely happened —
+  `SemgrepAnalyzer` always passes `--verbose` for this reason.
+- Confirmed Semgrep's own `extra.lines`/`extra.fingerprint` require an
+  account login and are unusable in LaraDogs' unauthenticated,
+  local-CLI-only mode — code snippets are read directly from the source
+  file instead.
+
 ## [Unreleased] — Phase 4.2.1: Npm Registry Trust Hardening
 
 ### Fixed

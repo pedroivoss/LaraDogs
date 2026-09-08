@@ -75,11 +75,25 @@ one). Migrations use only portable Laravel primitives, per
 (SQLite/MySQL/MariaDB/PostgreSQL) — no vendor-specific enum types, JSON
 operators, generated columns, or partial indexes.
 
-## Phase 4 — Security / Dependency Scanners
+## Phase 4 — Security / Dependency Scanners 🚧 In progress
 
 First real scanner integrations: `composer audit`, `npm audit`,
 OSV-Scanner, Trivy, Semgrep. This is also where scanner sandboxing
 (ADR-0004) must actually be implemented, not just designed.
+
+**Execution note:** this phase's scope was delivered across several
+finer-grained execution sub-phases (tracked informally as "Phase 4",
+"Phase 4.1", "Phase 4.2", "Phase 4.2.1", "Phase 5" in commit history/ADR
+notes — a different numbering than this document's own coarse phase
+list): `composer audit` (real process execution + Docker), `npm audit`
+(+ registry/proxy trust hardening), and a Semgrep **foundation** (a small,
+2-5-rule bundled ruleset proving the Discovery → Engine → Findings
+vertical end-to-end — see [`../auditing/static-analysis.md`](../auditing/static-analysis.md)
+and [`../auditing/analyzers/semgrep.md`](../auditing/analyzers/semgrep.md))
+are done. **Still remaining from this phase's original scope:**
+OSV-Scanner, Trivy, and — importantly — the comprehensive Laravel-aware
+Semgrep rule library this foundation deliberately does not yet include
+(see [`../auditing/rules.md`](../auditing/rules.md)).
 
 ## Phase 5 — Bug / Quality Analysis
 

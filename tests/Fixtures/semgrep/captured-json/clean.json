@@ -1,0 +1,9 @@
+{
+    "version": "1.176.0",
+    "results": [],
+    "errors": [],
+    "paths": {
+        "scanned": ["/targets/app/Clean.php"],
+        "skipped": []
+    }
+}

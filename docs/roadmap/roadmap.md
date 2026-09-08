@@ -2,22 +2,22 @@
 
 ## Phases
 
-| Phase | Name                                    | Status                                                                            |
-| ----- | --------------------------------------- | --------------------------------------------------------------------------------- |
-| 0     | Discovery / Architecture / Bootstrap    | **Complete**                                                                      |
-| 1     | Project Discovery (stack detection)     | **Complete**                                                                      |
-| 2     | Audit Engine Foundation                 | **Complete**                                                                      |
-| 3     | Finding Domain + Persistence            | **Complete**                                                                      |
-| 4     | Security / Dependency Scanners          | **In progress** (`composer audit` + `npm audit` done; other scanners not started) |
-| 5     | Bug / Quality Analysis                  | Not started                                                                       |
-| 6     | Performance Analysis                    | Not started                                                                       |
-| 7     | Dashboard                               | Not started                                                                       |
-| 8     | History / Comparison / Quality Gates    | Not started                                                                       |
-| 9     | MCP                                     | Not started                                                                       |
-| 10    | Authentication / MCP Credentials        | Not started                                                                       |
-| 11    | Git Integration / Continuous Monitoring | Not started                                                                       |
-| 12    | CI / GitHub Action                      | Not started                                                                       |
-| 13    | Hardening / Release                     | Not started                                                                       |
+| Phase | Name                                    | Status                                                                                                                                                                               |
+| ----- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0     | Discovery / Architecture / Bootstrap    | **Complete**                                                                                                                                                                         |
+| 1     | Project Discovery (stack detection)     | **Complete**                                                                                                                                                                         |
+| 2     | Audit Engine Foundation                 | **Complete**                                                                                                                                                                         |
+| 3     | Finding Domain + Persistence            | **Complete**                                                                                                                                                                         |
+| 4     | Security / Dependency Scanners          | **In progress** (`composer audit` + `npm audit` done; a small, 2-5-rule Semgrep foundation done — see below; OSV-Scanner/Trivy and a comprehensive Semgrep rule library not started) |
+| 5     | Bug / Quality Analysis                  | Not started                                                                                                                                                                          |
+| 6     | Performance Analysis                    | Not started                                                                                                                                                                          |
+| 7     | Dashboard                               | Not started                                                                                                                                                                          |
+| 8     | History / Comparison / Quality Gates    | Not started                                                                                                                                                                          |
+| 9     | MCP                                     | Not started                                                                                                                                                                          |
+| 10    | Authentication / MCP Credentials        | Not started                                                                                                                                                                          |
+| 11    | Git Integration / Continuous Monitoring | Not started                                                                                                                                                                          |
+| 12    | CI / GitHub Action                      | Not started                                                                                                                                                                          |
+| 13    | Hardening / Release                     | Not started                                                                                                                                                                          |
 
 No changes were made to this phase list during Phase 0 — the brief's
 ordering (foundation → discovery → engine → domain model → scanners →
@@ -192,6 +192,59 @@ correlation across scanners, no Laravel-aware rules, no ADR (npm's
 findings extend ADR-0011's existing scope, not a new architectural
 decision) — see the Phase 4.2 report for the full account and
 [`analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md).
+
+## What Phase 5 actually delivered
+
+The third real analyzer, and the first Static Application Security
+Testing (SAST) one: `App\Audit\Analyzers\Semgrep\SemgrepAnalyzer`, reusing
+`SymfonyProcessRunner` unchanged. Proves the Discovery → Engine →
+`SemgrepAnalyzer` → safe process execution → Semgrep → Semgrep JSON →
+`SemgrepParser` → `FindingCandidate` → Finding persistence/lifecycle
+vertical end-to-end, with a deliberately small, 3-rule bundled ruleset
+(`dd()`/`var_dump()` left in code, `eval()` usage) rather than a
+comprehensive Laravel-aware library — see
+[`../auditing/static-analysis.md`](../auditing/static-analysis.md) and
+[`analyzers/semgrep.md`](../auditing/analyzers/semgrep.md) for the full
+account.
+
+The phase's central finding, reproduced empirically: pointing Semgrep at
+a target DIRECTORY lets the target's own `.semgrepignore` hide a
+genuinely-vulnerable file from analysis with no error signal at all —
+mitigated by never doing that: a new `SemgrepTargetCollector` performs
+LaraDogs' own bounded, symlink-rejecting, realpath-contained file walk and
+passes every collected file as an explicit `semgrep scan` argv target
+instead, verified to bypass `.semgrepignore`/`.gitignore` regardless of
+what either file says — recorded as
+[ADR-0012](../architecture/decisions/ADR-0012-trusted-static-analysis-rules.md),
+the new rule-source-trust decision this phase required. A second research
+finding shaped rule identity: Semgrep's own `check_id` embeds a mangled
+form of the `--config` path's directory unless invoked with a bare
+filename from that file's own directory as cwd — `SemgrepParser` matches
+`check_id` against the known catalog rather than ever trusting it
+verbatim, regardless of which prefixing form occurs. `semgrep`
+is the first analyzer to genuinely use `AnalyzerCoverage::Explicit`
+(Composer/npm's dependency-advisory model has no "rules executed"
+universe to declare it from) — `SemgrepCoverageEvaluator` declares it only
+when a run reported zero operational errors/warnings and no non-benign
+skipped files, conservatively falling back to `Unknown` the moment
+there's any doubt; all 5 required lifecycle cases (verified resolution,
+removed rule, failed analyzer, unknown coverage, regression) are proven
+against the real analyzer across successive scans. Semgrep was added to
+the Docker `runtime` stage via an isolated Python virtualenv (its official
+image is Alpine/musl-based and not binary-portable to this image's
+glibc/Debian base) — verified no Composer/npm regression, +~382MB image
+size (798MB → 1.18GB). The existing `laradogs:audit` CLI and
+`ScanRunner`/`ScanRecorder`/`FindingIngestor` pipeline needed zero changes
+to support a third analyzer; a dedicated test confirms `composer-audit`
+and `semgrep` coexist deterministically in one registry/scan (also
+verified manually with all three analyzers together in a real Docker
+container), with one analyzer's failure never affecting another's result.
+69 new tests (329 total; 318 passing + 11 opt-in real-network/real-binary
+tests skipped by default). No comprehensive Laravel-aware rule library, no
+OSV-Scanner/Trivy/ESLint/PHPStan-against-target, no auto-fix/AI
+remediation, no dashboard, no MCP server, no correlation across scanners
+— see [`analyzers/semgrep.md`](../auditing/analyzers/semgrep.md) for the
+full account.
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

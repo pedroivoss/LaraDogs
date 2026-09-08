@@ -1,0 +1,6 @@
+{
+    "name": "fixture/semgrep-ignore-bypass-project",
+    "require": {
+        "php": "^8.2"
+    }
+}

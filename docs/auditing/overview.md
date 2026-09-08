@@ -2,17 +2,23 @@
 
 **Status: Partially implemented.** Step 1 (stack detection) is implemented
 — see [`project-discovery.md`](project-discovery.md). Step 2 (analyzer
-selection) is implemented, with two real analyzers registered
-(`composer-audit`, Phase 4; `npm-audit`, Phase 4.2 — deterministically
-coexisting in the same registry) — see [`audit-engine.md`](audit-engine.md).
-Step 3 (isolated execution) is implemented for both via the same real
+selection) is implemented, with three real analyzers registered
+(`composer-audit`, Phase 4; `npm-audit`, Phase 4.2; `semgrep`, Phase 5 —
+deterministically coexisting in the same registry) — see
+[`audit-engine.md`](audit-engine.md).
+Step 3 (isolated execution) is implemented for all three via the same real
 `ProcessRunner` — see
 [`../development/process-execution.md`](../development/process-execution.md).
 Step 4's normalized shape (`FindingCandidate`) and step 7's
-persistence/lifecycle are implemented, and now have two real producers —
+persistence/lifecycle are implemented, and now have three real producers —
 see [`findings-lifecycle.md`](findings-lifecycle.md),
-[`analyzers/composer-audit.md`](analyzers/composer-audit.md), and
-[`analyzers/npm-audit.md`](analyzers/npm-audit.md). Steps 5, 6, and 8
+[`analyzers/composer-audit.md`](analyzers/composer-audit.md),
+[`analyzers/npm-audit.md`](analyzers/npm-audit.md), and
+[`analyzers/semgrep.md`](analyzers/semgrep.md). Step 6 (Laravel-aware
+rules) now has a first, deliberately minimal foundation — see
+[`static-analysis.md`](static-analysis.md) and [`rules.md`](rules.md) for
+what exists (a 3-rule proof-of-vertical ruleset) versus what remains
+future work (a comprehensive Laravel-aware rule library). Steps 5 and 8
 remain planned, agreed during Phase 0/3 so later phases have a shared
 target instead of each improvising the shape independently.
 
@@ -22,8 +28,10 @@ target instead of each improvising the shape independently.
    Inertia/React/Vue presence, Composer/NPM/Docker/CI configuration) — see
    [`project-discovery.md`](project-discovery.md).
 2. **Select applicable scanners** (`composer audit` — implemented, Phase 4;
-   `npm audit` — implemented, Phase 4.2 — PHPStan/Larastan, ESLint,
-   Semgrep, OSV-Scanner, Trivy, Pest/PHPUnit, ...) — only tools actually
+   `npm audit` — implemented, Phase 4.2; Semgrep — foundation implemented,
+   Phase 5, with a small 3-rule bundled ruleset (see
+   [`static-analysis.md`](static-analysis.md)) — PHPStan/Larastan, ESLint,
+   OSV-Scanner, Trivy, Pest/PHPUnit, ...) — only tools actually
    installed/usable, degrading gracefully otherwise — see
    [`audit-engine.md`](audit-engine.md) for the applicability/availability
    distinction and planning mechanics.
@@ -36,14 +44,17 @@ target instead of each improvising the shape independently.
    for the earlier design decisions it builds on).
 4. **Normalize** each scanner's raw output into a
    [`FindingCandidate`](findings-lifecycle.md#ingestion) — implemented,
-   with `composer-audit` (Phase 4) and `npm-audit` (Phase 4.2) as real
-   producers.
+   with `composer-audit` (Phase 4), `npm-audit` (Phase 4.2), and `semgrep`
+   (Phase 5) as real producers.
 5. Correlate and deduplicate findings that describe the same underlying
    issue across multiple scanners.
 6. Apply Laravel-aware rules layered on top of generic scanner output
    (Eloquent, policies, middleware, mass assignment, queues, CORS,
-   Sanctum, etc. — see the product brief for the full list; none of these
-   rules exist yet).
+   Sanctum, etc. — see the product brief for the full list). A first,
+   deliberately minimal foundation exists as of Phase 5 (3 bundled Semgrep
+   rules proving the vertical — see [`static-analysis.md`](static-analysis.md)
+   and [`rules.md`](rules.md)); the comprehensive Laravel-aware rule
+   library this step describes does not exist yet.
 7. **Persist** the result as an immutable `Scan` and compare it against
    the project's previous scan — [`findings-lifecycle.md`](findings-lifecycle.md)
    for what's implemented (ingestion, fingerprinting, lifecycle,

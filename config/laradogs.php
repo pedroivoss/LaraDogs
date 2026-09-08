@@ -116,4 +116,44 @@ return [
         'https_proxy' => env('LARADOGS_NPM_HTTPS_PROXY'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Semgrep Analyzer
+    |--------------------------------------------------------------------------
+    |
+    | `binary` overrides automatic resolution (see SemgrepBinaryResolver) —
+    | never a binary living inside the target's own `.venv`/`node_modules`/
+    | `vendor`, never a path read from any target project file. Left null,
+    | LaraDogs looks for `semgrep` on its OWN PATH via Symfony's
+    | ExecutableFinder.
+    |
+    | `timeout_seconds` bounds the whole `semgrep scan` process (enforced by
+    | SymfonyProcessRunner); `per_file_timeout_seconds` is Semgrep's own
+    | `--timeout` (per rule/file — Semgrep's own default is 5s, passed
+    | explicitly here for clarity rather than relying on that implicit
+    | default); `max_target_bytes` is Semgrep's own `--max-target-bytes`
+    | (Semgrep's own default is 1,000,000 bytes, passed explicitly for the
+    | same reason — verified empirically that a file over this limit is
+    | silently skipped unless `--verbose` is also passed, which
+    | SemgrepAnalyzer always does; see docs/auditing/analyzers/semgrep.md).
+    |
+    | `settings_path` is always forced into the child process as
+    | SEMGREP_SETTINGS_FILE (verified against the installed CLI's own
+    | `semgrep/settings.py` resolution order: `$SEMGREP_SETTINGS_FILE` ||
+    | `$XDG_CONFIG_HOME/semgrep/settings.yaml` || `~/.semgrep/settings.yaml`)
+    | — never needs to exist ahead of time, mirroring the same pattern
+    | already used for NPM_CONFIG_USERCONFIG/COMPOSER_HOME: a developer's
+    | own real `~/.semgrep/settings.yaml` (which may carry a stored
+    | login/anonymous id) is never read by this subprocess.
+    |
+    */
+
+    'semgrep' => [
+        'binary' => env('LARADOGS_SEMGREP_BINARY'),
+        'timeout_seconds' => (int) env('LARADOGS_SEMGREP_TIMEOUT_SECONDS', 60),
+        'per_file_timeout_seconds' => (int) env('LARADOGS_SEMGREP_PER_FILE_TIMEOUT_SECONDS', 5),
+        'max_target_bytes' => (int) env('LARADOGS_SEMGREP_MAX_TARGET_BYTES', 1_000_000),
+        'settings_path' => env('LARADOGS_SEMGREP_SETTINGS_PATH', storage_path('app/laradogs/semgrep-settings.yml')),
+    ],
+
 ];

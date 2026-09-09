@@ -111,7 +111,12 @@ it('flags every SQL raw-query positive and none of the negative/safe cases', fun
     $findings = scanFixtureWithRealSemgrep(rulesFixture('sql-raw-query.php'));
     $lines = linesForRule($findings, 'laradogs.security.sql.tainted-raw-query');
 
-    expect($lines)->toEqualCanonicalizing([17, 25, 33, 39]);
+    // Phase 6.1 (real-world validation against allimaPanel, 2026-09-08):
+    // 88 is the new positiveWhereRawConcat regression. None of
+    // safeBoundWhereRaw, safeChainThenSelectRaw, safeChainThenOrderByRaw,
+    // or safeInlineTernaryInRawString fire — see the fixture's own
+    // comments for what each one reproduces from the real allimaPanel scan.
+    expect($lines)->toEqualCanonicalizing([17, 25, 33, 39, 88]);
 });
 
 it('flags every Blade raw-output positive and none of the negative/safe cases', function () {
@@ -138,7 +143,15 @@ it('flags every filesystem-path positive and none of the negative/safe cases', f
     $findings = scanFixtureWithRealSemgrep(rulesFixture('filesystem-path.php'));
     $lines = linesForRule($findings, 'laradogs.security.filesystem.tainted-path');
 
-    expect($lines)->toEqualCanonicalizing([17, 24, 32, 38]);
+    // Phase 6.1 (real-world validation against allimaPanel, 2026-09-08):
+    // no new positives were added here — safeUuidPathTaintedContent,
+    // safeServiceRegeneratesPath, and knownLimitationTransparentWrapper are
+    // all new NEGATIVE regressions (see the fixture's own comments); none
+    // of them should appear in this list. Line numbers shifted by +1 from
+    // Phase 6 (17,24,32,38 -> 18,25,33,39) because Pint reformatted a
+    // fully-qualified `\Illuminate\Support\Str::uuid()` reference added by
+    // this phase into a `use` import further up the file.
+    expect($lines)->toEqualCanonicalizing([18, 25, 33, 39]);
 });
 
 it('flags every open-redirect positive and none of the negative/safe cases', function () {
@@ -189,7 +202,13 @@ it('flags Model::all() and not paginate()/limit()/cursor() alternatives, nor $re
     $findings = scanFixtureWithRealSemgrep(rulesFixture('eloquent-unbounded-all.php'));
     $lines = linesForRule($findings, 'laradogs.performance.eloquent.unbounded-all');
 
-    expect($lines)->toEqualCanonicalizing([15]);
+    // Phase 6.1 (real-world validation against allimaPanel, 2026-09-08):
+    // safeCollectionAllFluentChain and safeDbTablePluckAll are new negative
+    // regressions (Collection::all(), not Model::all()) — neither should
+    // appear in this list. Line shifted 15 -> 17 because Pint reformatted
+    // `class User {}` (added a `use Illuminate\Support\Facades\DB;` import
+    // and split the empty class body onto its own line).
+    expect($lines)->toEqualCanonicalizing([17]);
 });
 
 it('finds zero unexpected results and zero errors when scanning all Phase 6 fixtures together', function () {
@@ -200,6 +219,11 @@ it('finds zero unexpected results and zero errors when scanning all Phase 6 fixt
 
     $report = scanFixturesWithRealSemgrep(...$fixtureFiles);
 
+    // Phase 6.1 (real-world validation against allimaPanel, 2026-09-08):
+    // 24 -> 25, the one new positiveWhereRawConcat regression in
+    // sql-raw-query.php. Every other addition across all three fixtures
+    // this phase is a negative/safe/limitation case (expected to add zero
+    // findings).
     expect($report->errors)->toBe([])
-        ->and(count($report->findings))->toBe(24);
+        ->and(count($report->findings))->toBe(25);
 });

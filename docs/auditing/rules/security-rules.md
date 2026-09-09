@@ -102,6 +102,38 @@ actually verified.
       as a different AST shape than the conventional `use
 Illuminate\Support\Facades\DB;` + bare `DB::raw(...)` form nearly all
       real Laravel code uses.
+    - **Phase 6.1 fix (real-world validation against allimaPanel,
+      2026-09-08):** the sinks below (`whereRaw`/`orderByRaw`/`selectRaw`/
+      `havingRaw`) previously ended in a trailing `...` to cover an
+      optional bindings-array argument. Combined with Semgrep taint mode's
+      default behavior — a sink match fires if taint reaches _anywhere_
+      within the matched call, not just its named metavariable — this
+      produced two confirmed real false-positive classes in a genuine 908-
+      file production Laravel app, **on the exact safe pattern this rule's
+      own remediation recommends**:
+        1. `whereRaw('period = ?', [$tainted])` — a _bound_ parameter
+           (Laravel's own documented-safe idiom) reaching only the
+           bindings array, never the raw SQL string itself, was flagged.
+        2. A "chain-cascade" duplicate: once one call in a fluent chain
+           safely used tainted-but-bound data, every _later_ sink call
+           chained off the same query-builder variable (a fully literal
+           `selectRaw`/`orderByRaw`, no variable involved at all) was
+           _also_ flagged, because the sink's own `$QB` receiver
+           metavariable is otherwise unconstrained and can bind an
+           arbitrarily long preceding chain.
+           **Fix:** every sink is now written as fixed-arity alternatives (an
+           explicit `$BINDINGS` metavariable instead of `...`) plus
+           `focus-metavariable: $X`, restricting the taint check to the raw SQL
+           string argument alone. Confirmed empirically this also already
+           excludes a _third_ shape found in the same real app — a tainted
+           value reaching only a ternary CONDITION _inline inside the sink's
+           own raw-string argument_ (e.g. `selectRaw('...'.($status ===
+'completed' ? 'a' : 'b'))`) — no further change was needed for that
+           case once the fix above was in place. See
+           `tests/Fixtures/semgrep/rules/sql-raw-query.php` for the exact
+           regression fixtures (`safeBoundWhereRaw`, `safeChainThenSelectRaw`,
+           `safeChainThenOrderByRaw`, `safeInlineTernaryInRawString`) and
+           `RULESET_VERSION` `2026.09.3`.
 - **Remediation:** prefer parameter bindings over raw SQL. When a raw
   fragment must include a value that cannot be bound (e.g. a column or
   sort-direction name), validate it against an explicit allowlist
@@ -217,6 +249,42 @@ Illuminate\Support\Facades\DB;` + bare `DB::raw(...)` form nearly all
   mitigation, though not a complete one on its own: it does not validate
   the resulting filename against an allowlist) and numeric casts. Taint is
   intraprocedural only.
+    - **Phase 6.1 fix #1 (real-world validation against allimaPanel,
+      2026-09-08) — content vs. path confusion:** every sink here
+      previously ended in a trailing `...` to cover optional trailing
+      arguments (e.g. `file_put_contents`'s flags/context, `Storage::put`'s
+      options array). Combined with Semgrep taint mode's default
+      "taint anywhere in the match" behavior, this produced a confirmed
+      real false positive: `file_put_contents($safeUuidPath,
+$taintedImageContent)` — a fully server-generated, `Str::uuid()`-
+      based PATH with tainted CONTENT — was flagged as path traversal,
+      even though the path argument itself was never influenced by user
+      input at all. **Fix:** every sink is now written as fixed-arity
+      alternatives (explicit metavariables for every argument, never
+      `...`) plus `focus-metavariable: $X` restricting the check to the
+      path argument alone.
+    - **Phase 6.1 fix #2 — cross-call return-value over-tainting:** a
+      second, distinct real false-positive class: a tainted value passed
+      as an argument to a helper/service method (e.g. an image-crop
+      service) or used in an Eloquent `->where($tainted)->get()` call,
+      whose RETURN VALUE was then conservatively treated as tainted by
+      Semgrep's OSS engine — even though the callee actually returns a
+      fresh, server-generated value (a new `Str::uuid()`-based path; a
+      previously-stored, non-attacker-controlled DB column). This rule now
+      sets `options: { taint_assume_safe_functions: true }`, confirmed
+      empirically to eliminate both real shapes above without weakening
+      any of this rule's own already-tested guarantees (direct
+      passthrough, string concatenation, string interpolation — none of
+      which cross a function-call boundary — all still flagged
+      correctly). **Accepted trade-off:** a helper that is a genuine
+      TRANSPARENT wrapper (returns its tainted argument completely
+      unchanged, with no sanitization or regeneration at all) is no longer
+      flagged either — a real, accepted limitation, not fixed further this
+      phase (no interprocedural taint analysis is being built). See
+      `tests/Fixtures/semgrep/rules/filesystem-path.php`
+      (`safeUuidPathTaintedContent`, `safeServiceRegeneratesPath`,
+      `knownLimitationTransparentWrapper`) and `RULESET_VERSION`
+      `2026.09.3`.
 - **Remediation:** never build a filesystem path directly from user input.
   Use `basename()` to strip directory components, validate the result
   against an allowlist of permitted files/extensions, and prefer Laravel's

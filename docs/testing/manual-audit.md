@@ -49,14 +49,29 @@ applicable — see
 [`../auditing/analyzers/composer-audit.md`](../auditing/analyzers/composer-audit.md)
 and [`../auditing/analyzers/npm-audit.md`](../auditing/analyzers/npm-audit.md).
 
-**If the target is large** (many thousands of PHP files — a real,
-encountered case: this repository's own root, which includes a large
-`tests/` fixture tree, took ~77 seconds and exceeded the default 60s
-Semgrep timeout), raise it:
+**A real, production Laravel application can genuinely take 10+ minutes
+to scan.** The Semgrep analyzer's `timeout_seconds` (whole-scan timeout)
+now defaults to **1800 seconds (30 minutes)**, calibrated from a real
+first-run validation: a real, production Laravel app (908 first-party
+PHP/Blade files) took ~767-864 seconds (~13-14 minutes) end-to-end — this
+is **not** a bug, it's Semgrep's own per-file overhead when scanning an
+explicit list of individual files (required for security — see
+[`../auditing/analyzers/semgrep.md#performance`](../auditing/analyzers/semgrep.md#performance)
+for the full investigation), confirmed to scale linearly at ~0.86 seconds
+per first-party file, essentially independent of how many rules run. The
+1800s default carries ~2x headroom over that measured worst case, wide
+enough to absorb ordinary machine load rather than the original, tighter
+35% margin. For an EVEN larger project, raise it further:
 
 ```bash
-LARADOGS_SEMGREP_TIMEOUT_SECONDS=180 php artisan laradogs:audit /path/to/your/laravel/project --analyzer=semgrep
+LARADOGS_SEMGREP_TIMEOUT_SECONDS=2400 php artisan laradogs:audit /path/to/your/laravel/project --analyzer=semgrep
 ```
+
+If a scan does time out, `laradogs:audit` reports it explicitly
+(`[timed_out]`), with an actionable message pointing at this exact env
+var — it never reports a false-clean pass, never claims coverage, and
+never auto-resolves anything on a timed-out run (fail-closed, unchanged
+by this calibration).
 
 ## Docker test
 
@@ -112,6 +127,12 @@ doesn't use that ecosystem — not an error.
 
 ## Known limitations (read before your first real test)
 
+- **Scans of large real projects can take 10+ minutes** — ~0.86 seconds
+  per first-party PHP/Blade file, confirmed to scale linearly and to be
+  essentially independent of how many rules run. See the timeout guidance
+  above and
+  [`../auditing/analyzers/semgrep.md#performance`](../auditing/analyzers/semgrep.md#performance)
+  for the full real-world investigation behind this number.
 - **Only 12 rules exist** (3 dependency/quality proof-of-vertical rules
   from Phase 5, 9 Laravel-aware rules from Phase 6) — this is not a
   comprehensive Laravel security scanner. See

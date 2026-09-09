@@ -331,14 +331,20 @@ confidence, `file:line`, and message — e.g.:
   Possible SQL injection: a value that appears to come directly from user input ...
 ```
 
-**A real, encountered limitation, not a hypothetical one:** Semgrep's own
-default per-run timeout (60s, `laradogs.semgrep.timeout_seconds`) can be
-too short for a large codebase — running `laradogs:audit` against this
-very repository's own root (which includes a large `tests/` fixture tree)
-took **~77 seconds** and needed the timeout raised:
-`LARADOGS_SEMGREP_TIMEOUT_SECONDS=180 php artisan laradogs:audit .`. A
-typical application-sized target without an unusually large `tests/`
-directory should complete well within the default.
+**A real, encountered, and now-calibrated limitation, not a hypothetical
+one:** a real production Laravel application (908 first-party PHP/Blade
+files) took **~13 minutes** for a full Semgrep scan in its first real-world
+test — confirmed to be Semgrep's own per-file overhead when scanning an
+explicit file list (~0.86s/file, essentially independent of rule count),
+not a LaraDogs inefficiency, and required for security (a directory-based
+scan is ~200x faster but was verified, live, to let the target's own
+`.semgrepignore` hide 264 of 908 real files — see
+[`docs/auditing/analyzers/semgrep.md#performance`](docs/auditing/analyzers/semgrep.md#performance)
+for the full investigation). `timeout_seconds` (the whole-scan timeout)
+now defaults to **1800 seconds (30 minutes)**, calibrated from this real
+measurement rather than picked arbitrarily. An even larger project may
+need it raised further: `LARADOGS_SEMGREP_TIMEOUT_SECONDS=2400 php artisan
+laradogs:audit /path/to/project`.
 
 For the full guide — Docker usage, interpreting output, known
 limitations, how to report a false positive, and the guarantee that your

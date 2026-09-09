@@ -385,13 +385,43 @@ it('fails closed on malformed JSON output rather than reporting a false-clean pa
         ->and($analyzer->candidates($context, $result))->toBe([]);
 });
 
-it('reports timedOut distinctly, never as a plain failure or a pass', function () {
+it('reports timedOut distinctly, never as a plain failure or a pass, with Unknown coverage and an actionable message', function () {
     $context = semgrepFixtureProjectContext('php-project');
     $runner = new FakeProcessRunner(semgrepVersionCheckResult(), new ProcessResult(null, '', '', true, false, 60_000));
     $analyzer = makeSemgrepAnalyzer($runner);
     $analyzer->availability($context);
 
-    expect($analyzer->run($context)->status)->toBe(ExecutionStatus::TimedOut);
+    $result = $analyzer->run($context);
+
+    expect($result->status)->toBe(ExecutionStatus::TimedOut)
+        // Fail-closed: a timed-out run must never claim it verified any
+        // rule — see SemgrepCoverageEvaluator and ADR-0010's amendment.
+        ->and($result->coverage->mode)->toBe(CoverageMode::Unknown)
+        ->and($analyzer->candidates($context, $result))->toBe([])
+        // Actionable per Phase 6's real-world validation (allimaPanel):
+        // the message must point at the actual config knob, not just say
+        // "timed out."
+        ->and($result->summary)->toContain('LARADOGS_SEMGREP_TIMEOUT_SECONDS')
+        ->and($result->summary)->toContain('Unknown');
+});
+
+it('honors a configured whole-process timeout (LaraDogs config, never the target) rather than a hardcoded value', function () {
+    // A real, measured default informed by Phase 6's real-world validation
+    // (see config/laradogs.php's own docblock) — asserting the ACTUAL
+    // configured value flows through, not a hardcoded literal, so a large
+    // real project can be accommodated via config alone.
+    config(['laradogs.semgrep.timeout_seconds' => 1200]);
+
+    $context = semgrepFixtureProjectContext('php-project');
+    $json = str_replace('__PROJECT_PATH__', $context->projectPath, semgrepFindingsJson());
+    $runner = new FakeProcessRunner(semgrepVersionCheckResult(), semgrepScanResult($json));
+    $analyzer = makeSemgrepAnalyzer($runner);
+    $analyzer->availability($context);
+
+    $analyzer->run($context);
+
+    $scanCall = $runner->calls()[1];
+    expect($scanCall->timeoutSeconds)->toBe(1200);
 });
 
 it('fails on truncated output rather than trusting a partial JSON body', function () {

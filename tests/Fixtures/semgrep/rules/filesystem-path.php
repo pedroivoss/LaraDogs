@@ -3,6 +3,7 @@
 namespace Fixture\FilesystemPath;
 
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 // Fixture for laradogs.security.filesystem.tainted-path.
 // Positive cases below must be flagged; negative/safe cases must not.
@@ -66,5 +67,52 @@ class Controller
         $id = (int) $request->get('id');
 
         return file_get_contents(storage_path('reports/'.$id.'.pdf'));
+    }
+
+    // Phase 6.1 real-world regression (allimaPanel, 2026-09-08): a
+    // server-generated, uuid-based path with TAINTED CONTENT must NOT be
+    // flagged — the path itself is safe; only file_put_contents()'s second
+    // (content) argument is tainted. Before the fix, the sink pattern's
+    // trailing `...` let taint anywhere in the arguments trigger the match,
+    // confusing "tainted content" with "tainted path".
+    public function safeUuidPathTaintedContent($request)
+    {
+        $path = storage_path('app/temp/'.Str::uuid().'.jpg');
+
+        file_put_contents($path, $request->input('image'));
+    }
+
+    // Phase 6.1 real-world regression: a tainted value is passed as an
+    // ARGUMENT to a helper/service method, and the method's RETURN VALUE
+    // (not the argument itself) reaches the sink. The real service here
+    // regenerates a fresh, server-side uuid path — it never builds the
+    // returned path from its arguments — so this must NOT be flagged.
+    // Documents the accepted trade-off: `taint_assume_safe_functions` also
+    // means a genuinely TRANSPARENT wrapper (see
+    // knownLimitationTransparentWrapper below) is no longer caught either.
+    public function safeServiceRegeneratesPath($request, $service)
+    {
+        $croppedPath = $service->cropImage($request->input('x'), $request->input('y'));
+
+        unlink($croppedPath);
+    }
+
+    // Known, accepted limitation (documented, not fixed this phase): a
+    // helper that is a genuine TRANSPARENT wrapper — returns its tainted
+    // argument completely unchanged — is no longer flagged either, now
+    // that cross-call return values are assumed safe by default. No
+    // interprocedural taint analysis is being built to distinguish this
+    // from safeServiceRegeneratesPath above; see
+    // docs/auditing/rules/security-rules.md for the accepted trade-off.
+    public function knownLimitationTransparentWrapper($request)
+    {
+        $path = $this->identity($request->input('path'));
+
+        return file_get_contents($path);
+    }
+
+    private function identity($value)
+    {
+        return $value;
     }
 }

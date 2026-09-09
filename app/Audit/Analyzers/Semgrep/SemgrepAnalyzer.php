@@ -246,8 +246,19 @@ final class SemgrepAnalyzer implements Analyzer, ProducesFindingCandidates
 
         if ($result->timedOut) {
             return AnalyzerResult::timedOut(
-                sprintf('semgrep scan timed out after %ds.', $timeout),
-                [new AnalyzerDiagnostic(DiagnosticLevel::Error, 'Process timed out before completing.')],
+                sprintf(
+                    'semgrep scan timed out after %ds — the scan was incomplete, so no findings are '.
+                    'reported and coverage is Unknown (nothing was auto-resolved either). Large projects '.
+                    '(hundreds of first-party PHP/Blade files) can genuinely need more than %ds — raise '.
+                    'LARADOGS_SEMGREP_TIMEOUT_SECONDS in LaraDogs\' own environment (never the target\'s) '.
+                    'if this keeps happening. See docs/auditing/analyzers/semgrep.md#performance.',
+                    $timeout,
+                    $timeout,
+                ),
+                [new AnalyzerDiagnostic(
+                    DiagnosticLevel::Error,
+                    sprintf('Process timed out before completing (%d file(s) collected, %ds limit).', count($files), $timeout),
+                )],
             );
         }
 

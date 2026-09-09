@@ -100,12 +100,14 @@ Never conflate these:
    per run (`SemgrepAnalyzer::$resolvedVersion`, persisted as a
    `FindingCandidate`'s `analyzerVersion`).
 3. **Ruleset version** (`SemgrepRuleCatalog::RULESET_VERSION`, currently
-   `'2026.09.2'` — bumped from Phase 5's `'2026.09.1'` when Phase 6 added
-   9 new rules) — bumped whenever the bundled rules meaningfully change (a
-   rule added, removed, or its matching behavior altered), never merely as
-   a release marker alongside (1). Persisted as a `FindingCandidate`'s
-   `ruleVersion`, and optionally carried by
-   `AnalyzerCoverage::$rulesetVersion` for traceability.
+   `'2026.09.3'` — bumped from Phase 5's `'2026.09.1'` when Phase 6 added
+   9 new rules, then from `'2026.09.2'` when Phase 6.1 refined 3 existing
+   rules' matcher precision with no rule added/removed/renamed) — bumped
+   whenever the bundled rules meaningfully change (a rule added, removed,
+   or its matching behavior altered), never merely as a release marker
+   alongside (1). Persisted as a `FindingCandidate`'s `ruleVersion`, and
+   optionally carried by `AnalyzerCoverage::$rulesetVersion` for
+   traceability.
 
 **Critical, standing rule (carried forward from Phase 3.1 — see
 [ADR-0010's amendment](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md#amendment-phase-31-coverage-gated-auto-resolution)):**

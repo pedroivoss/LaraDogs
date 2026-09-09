@@ -49,8 +49,19 @@ final class SemgrepRuleCatalog
      * docs/auditing/rules/security-rules.md,
      * docs/auditing/rules/quality-rules.md, and
      * docs/auditing/rules/performance-rules.md for the full rationale.
+     *
+     * `2026.09.3` (Phase 6.1, real-world validation against allimaPanel):
+     * no rule added, removed, or renamed — matcher-precision-only changes
+     * to 3 existing rules' patterns (`laradogs.security.filesystem.
+     * tainted-path`, `laradogs.security.sql.tainted-raw-query`,
+     * `laradogs.performance.eloquent.unbounded-all`), fixing real false
+     * positives found scanning a real, 908-file production Laravel app.
+     * `severity`/`confidence`/`category`/rule ids unchanged. See
+     * docs/auditing/rules/security-rules.md and
+     * docs/auditing/rules/performance-rules.md for the full before/after
+     * account.
      */
-    public const string RULESET_VERSION = '2026.09.2';
+    public const string RULESET_VERSION = '2026.09.3';
 
     /**
      * @var list<array{id: string, category: AnalyzerCategory, confidence: Confidence}>

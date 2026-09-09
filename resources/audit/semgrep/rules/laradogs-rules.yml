@@ -162,12 +162,61 @@ rules:
           - pattern: (float)$X
           - pattern: intval(...)
           - pattern: floatval(...)
+      # Phase 6.1 (real-world validation against allimaPanel, 2026-09-08):
+      # every sink below is written with an explicit `focus-metavariable: $X`
+      # AND fixed-arity alternatives (never a trailing `...`) — both parts
+      # are required. `focus-metavariable: $X` alone does NOT work when the
+      # sink pattern still ends in `...` (empirically confirmed: taint
+      # anywhere under the `...` still triggers the sink even with
+      # focus-metavariable set); only once `...` is replaced with an
+      # explicit metavariable per real argument does focus-metavariable
+      # correctly restrict the taint check to $X's own subtree. This fixes,
+      # confirmed empirically against real code shapes:
+      #   1. The exact real false positive this rule produced against
+      #      allimaPanel: whereRaw('... = ?', [$tainted]) — a *safe*, bound
+      #      parameter reaching only the bindings array (previously
+      #      matched by `...`), never the raw SQL string ($X) itself.
+      #   2. The "chain-cascade" duplicate: $QB is otherwise an
+      #      unconstrained metavariable that can bind an entire preceding
+      #      fluent chain: once one call in a chain safely used
+      #      tainted-but-bound data, every later sink call chained off the
+      #      same query-builder variable (a literal-only selectRaw/
+      #      orderByRaw) also lit up. Restricting the taint check to $X
+      #      alone (never $QB) removes this regardless of what $QB itself
+      #      may have seen earlier in the chain.
+      #   3. A tainted value reaching only a ternary CONDITION whose two
+      #      branches are fixed literals (e.g.
+      #      selectRaw('...'.($status === 'completed' ? 'a' : 'b'))) —
+      #      confirmed empirically to already NOT match with this fix, no
+      #      further change needed: Semgrep's taint dataflow correctly
+      #      recognizes the branch VALUE as untainted even though the
+      #      tainted variable appears in the condition, once the check is
+      #      scoped to $X via focus-metavariable.
+      # See docs/auditing/rules/security-rules.md for the full account.
       pattern-sinks:
-          - pattern: DB::raw($X)
-          - pattern: $QB->whereRaw($X, ...)
-          - pattern: $QB->orderByRaw($X)
-          - pattern: $QB->selectRaw($X, ...)
-          - pattern: $QB->havingRaw($X, ...)
+          - patterns:
+                - pattern: DB::raw($X)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern-either:
+                      - pattern: $QB->whereRaw($X)
+                      - pattern: $QB->whereRaw($X, $BINDINGS)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern-either:
+                      - pattern: $QB->orderByRaw($X)
+                      - pattern: $QB->orderByRaw($X, $BINDINGS)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern-either:
+                      - pattern: $QB->selectRaw($X)
+                      - pattern: $QB->selectRaw($X, $BINDINGS)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern-either:
+                      - pattern: $QB->havingRaw($X)
+                      - pattern: $QB->havingRaw($X, $BINDINGS)
+                - focus-metavariable: $X
 
     # --- Phase 6: Blade raw output / XSS ------------------------------------
 
@@ -356,15 +405,67 @@ rules:
           - pattern: basename(...)
           - pattern: (int)$X
           - pattern: intval(...)
+      # Phase 6.1 (real-world validation against allimaPanel, 2026-09-08):
+      # `focus-metavariable: $X` + fixed-arity alternatives (never a
+      # trailing `...`) on every sink below — see the SQL rule's own
+      # comment above for why both parts are required together. This fixes
+      # the exact real false positive this rule produced against
+      # allimaPanel: file_put_contents($safeUuidPath, $taintedContent) —
+      # taint reaching only the CONTENT argument (previously matched by
+      # `...`), never the PATH argument ($X) itself.
+      #
+      # `options: taint_assume_safe_functions: true` (rule-level, below) is
+      # a SEPARATE fix for a second, real false-positive class also found
+      # against allimaPanel: a tainted value passed as an argument to a
+      # helper/service method (e.g. a crop service) or used in an Eloquent
+      # `->where($tainted)->get()` call, whose RETURN VALUE was then
+      # conservatively treated as tainted by Semgrep's OSS engine even
+      # though the callee actually returns a fresh, server-generated value
+      # (Str::uuid()-based path; a previously-stored, non-attacker-
+      # controlled DB column). Confirmed empirically: enabling this option
+      # does NOT weaken any of this rule's already-tested guarantees
+      # (direct passthrough, string concatenation, string interpolation —
+      # none of which cross a function-call boundary — all still match).
+      # The accepted trade-off: a helper that is a genuine TRANSPARENT
+      # wrapper (returns its tainted argument completely unchanged, with no
+      # sanitization/regeneration at all) will no longer be flagged either
+      # — documented as a known limitation, not fixed further this phase
+      # (no interprocedural taint analysis is being built — out of scope).
+      # See docs/auditing/rules/security-rules.md for the full account.
+      options:
+          taint_assume_safe_functions: true
       pattern-sinks:
-          - pattern: file_get_contents($X)
-          - pattern: file_put_contents($X, ...)
-          - pattern: unlink($X)
-          - pattern: fopen($X, ...)
-          - pattern: Storage::get($X)
-          - pattern: Storage::disk(...)->get($X)
-          - pattern: Storage::put($X, ...)
-          - pattern: Storage::delete($X)
+          - patterns:
+                - pattern: file_get_contents($X)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern-either:
+                      - pattern: file_put_contents($X, $CONTENT)
+                      - pattern: file_put_contents($X, $CONTENT, $FLAGS)
+                      - pattern: file_put_contents($X, $CONTENT, $FLAGS, $CONTEXT)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern: unlink($X)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern-either:
+                      - pattern: fopen($X, $MODE)
+                      - pattern: fopen($X, $MODE, $USE_INCLUDE_PATH)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern: Storage::get($X)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern: Storage::disk($DISK)->get($X)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern-either:
+                      - pattern: Storage::put($X, $CONTENT)
+                      - pattern: Storage::put($X, $CONTENT, $OPTIONS)
+                - focus-metavariable: $X
+          - patterns:
+                - pattern: Storage::delete($X)
+                - focus-metavariable: $X
 
     # --- Phase 6: Open redirect ----------------------------------------------
 
@@ -530,15 +631,36 @@ rules:
               ::paginate()/::cursor()/a bounded ::limit(), or confirm the
               table size is and will remain small enough that loading it
               entirely is intentional.
-      # $MODEL is restricted to a capitalized (PascalCase-looking) receiver
-      # — verified NECESSARY: an unrestricted `$MODEL::all()` pattern was
-      # empirically confirmed to also match `$request->all()` (Semgrep's PHP
-      # matcher treats `->` and `::` as interchangeable when the receiver is
-      # a metavariable), which would turn this rule into a false positive
-      # on nearly every controller that reads the request body. A
-      # lowercase-$-prefixed variable name never satisfies this regex.
+      # $MODEL is restricted to a capitalized (PascalCase-looking), BARE
+      # identifier receiver — verified NECESSARY, in two layers:
+      #   1. An unrestricted `$MODEL::all()` pattern was empirically
+      #      confirmed to also match `$request->all()` (Semgrep's PHP
+      #      matcher treats `->` and `::` as interchangeable when the
+      #      receiver is a metavariable), which would turn this rule into a
+      #      false positive on nearly every controller that reads the
+      #      request body. A lowercase-$-prefixed variable name never
+      #      satisfies this regex.
+      #   2. Phase 6.1 (real-world validation against allimaPanel,
+      #      2026-09-08): the ORIGINAL regex here was only `^[A-Z]` (first
+      #      character uppercase, unanchored at the end) — confirmed to ALSO
+      #      match `Collection::all()` (an entirely different method that
+      #      converts an already-query-bounded collection to a plain array,
+      #      not Eloquent's Model::all()) whenever $MODEL was bound to a
+      #      long preceding fluent chain whose first character happened to
+      #      be uppercase for an unrelated reason (e.g.
+      #      `SomeService::call()->map()->values()->all()`,
+      #      `DB::table(...)->pluck(...)->unique()->all()` — both real
+      #      false positives found in allimaPanel). Fully anchoring the
+      #      regex (`^[A-Z][A-Za-z0-9_]*$`) requires $MODEL's ENTIRE
+      #      captured text to be a single bare identifier — no `(`, `)`,
+      #      `->`, `::`, or `.` allowed anywhere in it — which rejects every
+      #      chain shape while still matching real model class names
+      #      (`User`, `Order`, `Survey`, ...). Confirmed empirically,
+      #      contrasted against a real, adjacent, correctly-unflagged
+      #      lowercase-receiver instance (`store::...->all()`) in the same
+      #      real file. See docs/auditing/rules/performance-rules.md.
       patterns:
           - pattern: $MODEL::all()
           - metavariable-regex:
                 metavariable: $MODEL
-                regex: '^[A-Z]'
+                regex: '^[A-Z][A-Za-z0-9_]*$'

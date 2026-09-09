@@ -433,11 +433,12 @@ command still persists nothing.
 `config/laradogs.php` gained one `semgrep` section:
 
 - `binary` (override; `null` triggers PATH resolution).
-- `timeout_seconds` (default 60) — the whole-process timeout, enforced by
-  `SymfonyProcessRunner`.
-- `per_file_timeout_seconds` (default 5) — Semgrep's own `--timeout`
-  (passed explicitly for clarity rather than relying on Semgrep's own
-  implicit default).
+- `timeout_seconds` (default **1800**, i.e. 30 minutes — see
+  [Performance](#performance) below for why) — the whole-process timeout,
+  enforced by `SymfonyProcessRunner`.
+- `per_file_timeout_seconds` (default 5) — Semgrep's own `--timeout`,
+  a COMPLETELY DIFFERENT, per-(rule,file) timeout — see
+  [Performance](#performance).
 - `max_target_bytes` (default 1,000,000) — Semgrep's own
   `--max-target-bytes`, passed explicitly for the same reason.
 - `settings_path` (default `storage_path('app/laradogs/semgrep-settings.yml')`)
@@ -452,6 +453,123 @@ No database migration was added — this phase's data fits entirely into
 the existing `findings.metadata`/`scan_analyzer_executions.coverage` JSON
 columns from Phase 3/3.1.
 
+## Performance
+
+**Status: investigated and calibrated (Phase 6 real-world validation,
+2026-09-08).** The first real-world test of this analyzer — against a
+real, production Laravel application (908 first-party PHP/Blade files
+after LaraDogs' own `vendor`/`node_modules`/`storage`/etc. exclusions) —
+timed out at the then-default 60s. This section records the investigation
+and the (deliberate, documented) trade-off that followed, so the
+`timeout_seconds` default is never mistaken for an arbitrary number.
+
+### Two timeouts, never confused
+
+- **A. `per_file_timeout_seconds`** → Semgrep's own `--timeout`: how long
+  ONE rule may spend on ONE file before Semgrep aborts just that pair
+  (surfaces as a `Timeout` entry in `errors[]`, which is exactly what
+  makes `SemgrepCoverageEvaluator` fall back to Unknown — see
+  [Coverage](#coverage-the-first-analyzer-to-use-explicit)). Does not stop
+  the rest of the scan.
+- **B. `timeout_seconds`** → the WHOLE-PROCESS external timeout
+  (`SymfonyProcessRunner`/Symfony Process's own `setTimeout()`). If the
+  ENTIRE invocation (every rule against every collected file) isn't done
+  by this deadline, the whole subprocess is killed and `run()` reports
+  `ExecutionStatus::TimedOut` — fail-closed: no findings, no coverage
+  claimed (verified: this behavior was already correct before this
+  investigation and was never weakened by it).
+
+### Root cause
+
+Baseline: 908 first-party files, ~4.85MB total. Reproducing
+`SemgrepAnalyzer`'s exact invocation (same ruleset, same flags, same
+explicit-file-list targets) outside any external timeout:
+
+| Strategy                                                                                     | Rule count         | Files scanned | Elapsed | Notes                                                                                                                    |
+| -------------------------------------------------------------------------------------------- | ------------------ | ------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Explicit file list (LaraDogs' real strategy)                                                 | 3 (Phase 5 subset) | 908           | 783.99s |                                                                                                                          |
+| Explicit file list (LaraDogs' real strategy)                                                 | 12 (full catalog)  | 908           | 767.10s | Confirms rule count is NOT the driver                                                                                    |
+| Explicit file list, 50-file subset                                                           | 3                  | 50            | 43.53s  | 0.87s/file — matches the 908-file rate almost exactly                                                                    |
+| Directory scan (target's own ignore rules apply)                                             | 3                  | 804           | 3.53s   | **264 real files silently hidden by the target's own `.semgrepignore`**                                                  |
+| Synthetic dir (LaraDogs-selected files copied into a fresh, `.semgrepignore`-free directory) | 3                  | 803           | 2.58s   | **105 files silently hidden by Semgrep's own BUILT-IN default ignore patterns**, even with zero `.semgrepignore` present |
+| Synthetic dir (same)                                                                         | 12 (full catalog)  | ~803          | 3.92s   | Confirms rule count still isn't the driver                                                                               |
+
+**Conclusion: elapsed time scales linearly with the number of EXPLICIT
+FILE TARGETS (~0.86s/file), essentially independent of rule count or
+taint-mode complexity.** Root cause: when Semgrep is given hundreds of
+separate file paths as individual scanning-root arguments, it pays a
+fixed ~0.86s of its own internal per-root overhead (project-root
+detection / ignore-file consultation / target-resolution bookkeeping) for
+EACH one — behavior confirmed via Semgrep's own CLI, not a LaraDogs
+inefficiency, and not reduced by running fewer/simpler rules.
+
+### Why the fast alternatives were rejected
+
+A directory-based scan is ~200x faster — but re-confirmed, live, against
+a real project, the exact security gap Phase 5/ADR-0012 already closed:
+the target's own `.semgrepignore` silently hid 264 of 908 real
+first-party files. A further experiment — copying LaraDogs' own
+`SemgrepTargetCollector`-selected files into a fresh synthetic directory
+with no target `.semgrepignore`/`.gitignore` at all, then scanning that
+directory — was also fast, but surfaced a NEW, not-yet-fully-characterized
+gap: **Semgrep has its own built-in default ignore patterns** (observed:
+paths under common `tests/` subdirectories, among others) that silently
+excluded ~105 files even with zero `.semgrepignore` present anywhere.
+Neither alternative is adopted. The explicit-file-list strategy's slower
+but PROVEN-COMPLETE behavior (zero silent exclusions in every measurement
+above) is kept — correctness over speed, deliberately. Investigating
+Semgrep's built-in ignore defaults well enough to trust a directory-based
+strategy is recorded as future work, not attempted this phase (see
+[Known limitations](#known-limitations)).
+
+### The chosen default
+
+`timeout_seconds` default raised from 60s to **1200s (20 minutes)** —
+not arbitrary: ~35% headroom over the measured ~767-828s real-world
+worst case (908 files, full catalog; 828s is what the real
+`laradogs:audit` CLI took end-to-end, including Discovery and JSON
+encoding of a large findings set — slightly more than the raw
+`semgrep scan` subprocess's own ~767s). Still a firm, finite ceiling — a
+hostile or degenerate target cannot hang LaraDogs indefinitely, it is
+simply bounded generously enough that a real project at this scale
+finishes. A significantly larger real project may still need this raised
+further via `LARADOGS_SEMGREP_TIMEOUT_SECONDS` (LaraDogs' own env var,
+read from LaraDogs' own environment — never the target's `.env`, which
+LaraDogs never reads at all).
+
+### Retest confirmation
+
+After raising the default, the exact same real project completed
+successfully via the real CLI: `php artisan laradogs:audit
+<allimaPanel-path> --analyzer=semgrep` → `[passed]`, 32 findings, real
+elapsed ~828s, well inside the new 1200s ceiling. See
+[`../../testing/manual-audit.md`](../../testing/manual-audit.md) for the
+user-facing guidance this produced.
+
+### Phase 6.1 recalibration (rule-precision refinement, 2026-09-08/09)
+
+Phase 6.1 rewrote several rules' sink patterns as fixed-arity
+`pattern-either` alternatives (multiple explicit patterns per sink instead
+of one pattern ending in `...`) to fix real false positives — see
+[`../rules/security-rules.md`](../rules/security-rules.md). One full
+real-world audit run against the same real project afterward timed out at
+the then-1200s ceiling. Investigated before touching the timeout again,
+same methodology as above: a clean, isolated re-measurement of the exact
+same invocation (the raw `semgrep scan` subprocess alone, nothing else
+running concurrently on the machine) came back at **~864s** — essentially
+unchanged from the pre-Phase-6.1 ~767-828s range, confirming the
+additional `pattern-either` alternatives did **not** meaningfully increase
+Semgrep's own per-file cost. The 1200s timeout was almost certainly
+exhausted by ordinary machine load at the time of that specific run (other
+concurrent work on the same machine), not a ruleset regression.
+
+**Chosen new default: 1800s (30 minutes)** — raised from 1200s. Since real
+audits do run on shared, potentially loaded machines, and the previous 35%
+headroom margin proved too tight in practice, headroom was widened to
+~2x over the measured ~864s worst case rather than left at the original
+tighter margin. A clean CLI retest afterward confirmed the same real
+project completes successfully well inside the new ceiling.
+
 ## Rule catalog (`resources/audit/semgrep/rules/`)
 
 See [`../rules.md`](../rules.md) for the full convention, and
@@ -460,8 +578,11 @@ See [`../rules.md`](../rules.md) for the full convention, and
 [`../rules/performance-rules.md`](../rules/performance-rules.md) for what
 each rule actually detects. Bundled rules today
 (`App\Audit\Analyzers\Semgrep\SemgrepRuleCatalog::RULESET_VERSION =
-'2026.09.2'`, bumped from Phase 5's `'2026.09.1'` when Phase 6 added the
-9 rules below the first three):
+'2026.09.3'`, bumped from Phase 5's `'2026.09.1'` when Phase 6 added the
+9 rules below the first three, then from `'2026.09.2'` to `'2026.09.3'`
+when Phase 6.1 refined 3 existing rules' matcher precision — same 12 rule
+ids, no rule added/removed/renamed, `severity`/`confidence`/`category`
+unchanged):
 
 | Rule id                                               | Category      | Confidence | Severity (YAML) | Phase |
 | ----------------------------------------------------- | ------------- | ---------- | --------------- | ----- |
@@ -640,11 +761,35 @@ verification were removed afterward.
   passed through another function/method before reaching a sink is not
   tracked across that call boundary. See each rule's own "Limitations"
   section in [`../rules/security-rules.md`](../rules/security-rules.md).
+- `laradogs.security.filesystem.tainted-path` (only) sets
+  `options: { taint_assume_safe_functions: true }` since Phase 6.1 — a
+  genuinely transparent helper (one that returns its tainted argument
+  completely unchanged, with no sanitization or regeneration at all) will
+  not be flagged even when it should be. Accepted trade-off: this fixed
+  real false positives against a real project (a crop-service call
+  returning a fresh, server-generated path) at the cost of this narrower
+  false-negative shape. See
+  [`../rules/security-rules.md`](../rules/security-rules.md).
 - The Blade XSS rule (`laradogs.security.blade.raw-output-tainted`) is a
   textual heuristic (Semgrep `generic` mode has no real dataflow) — it
   only catches a DIRECT request-input call inside the raw-output block,
   not a tainted variable assigned earlier and echoed by name. This is a
   real, documented false-negative gap, not a false-positive risk.
+- **A large real project (900+ first-party files) can take 10+ minutes to
+  scan** with the current explicit-file-list strategy (~0.86s of Semgrep's
+  own per-file overhead, confirmed to scale linearly — see
+  [Performance](#performance)). `timeout_seconds` defaults to 1800s to
+  accommodate this, but a significantly larger project (or a heavily
+  loaded machine) may still need it raised further via
+  `LARADOGS_SEMGREP_TIMEOUT_SECONDS`.
+- **Semgrep's own built-in default ignore patterns are not yet
+  characterized well enough to trust a directory-based scanning strategy**
+  — discovered while investigating the above (a fresh, `.semgrepignore`-free
+  synthetic directory still silently skipped ~105 real first-party files).
+  A future phase could investigate exactly which built-in patterns apply
+  and whether they can be safely neutralized, which would let a much
+  faster strategy be adopted without the coverage regression observed
+  this phase. Not attempted here — out of scope for a timeout fix.
 - `MIN_SUPPORTED_VERSION` (`1.176.0`) is conservative by construction, not
   research-backed across a version range: the exact fields this parser
   depends on (`paths.skipped[].reason` requiring `--verbose`, the dual

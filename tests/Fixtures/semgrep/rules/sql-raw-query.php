@@ -77,4 +77,67 @@ class Controller
 
         return $qb->orderByRaw('created_at '.$direction);
     }
+
+    // POSITIVE: tainted value reaches whereRaw() through concatenation —
+    // the exact shape the user's Phase 6.1 spec required as a mandatory
+    // regression (distinct from positiveConcat above, which uses DB::raw).
+    public function positiveWhereRawConcat($request, $qb)
+    {
+        $name = $request->input('name');
+
+        return $qb->whereRaw('name = '.$name);
+    }
+
+    // Phase 6.1 real-world regression (allimaPanel, 2026-09-08): a request
+    // value used ONLY as a bound parameter (a `?` placeholder + bindings
+    // array) must NOT be flagged — this is the exact SAFE pattern this
+    // rule's own remediation text recommends. Before the fix, the sink
+    // pattern's trailing `...` let taint anywhere in the bindings array
+    // trigger the match even though the raw SQL string itself never
+    // contains the tainted value.
+    public function safeBoundWhereRaw($request, $qb)
+    {
+        $period = $request->get('period');
+
+        return $qb->whereRaw('DATE_FORMAT(schedule_date, "%Y-%m") = ?', [$period]);
+    }
+
+    // Phase 6.1 real-world regression: a chain-cascade duplicate. $qb was
+    // fed a safe, bound whereRaw earlier in the SAME fluent chain; a LATER
+    // selectRaw() with a fully literal string (no variable at all) must
+    // NOT also be flagged just because $qb's earlier call happened to see
+    // tainted (but safely bound) data.
+    public function safeChainThenSelectRaw($request, $qb)
+    {
+        $period = $request->get('period');
+        $qb = $qb->whereRaw('period = ?', [$period]);
+
+        return $qb->selectRaw('id, name');
+    }
+
+    // Phase 6.1 real-world regression: same chain-cascade shape, for
+    // orderByRaw() instead of selectRaw() — orderByRaw's sink pattern has
+    // no trailing `...` at all, so this specifically exercises whether an
+    // unconstrained $QB receiver (rather than a trailing wildcard) is the
+    // source of the false positive.
+    public function safeChainThenOrderByRaw($request, $qb)
+    {
+        $period = $request->get('period');
+        $qb = $qb->whereRaw('period = ?', [$period]);
+
+        return $qb->orderByRaw('status DESC, schedule_date DESC');
+    }
+
+    // Phase 6.1 real-world regression: the exact allimaPanel shape — a
+    // tainted value reaches only a ternary CONDITION, inline inside the
+    // sink's own raw-string argument (unlike safeAllowlistedTernary above,
+    // where the ternary result is assigned to a separate variable first).
+    // Both of the ternary's branches are fixed literals; the tainted value
+    // itself never becomes part of the SQL text.
+    public function safeInlineTernaryInRawString($request, $qb)
+    {
+        $statusFilter = $request->input('status');
+
+        return $qb->selectRaw('id, '.($statusFilter === 'completed' ? 'sig.manager_name' : 'NULL as manager_name'));
+    }
 }

@@ -69,6 +69,89 @@ LaraDogs does not yet have versioned releases (pre-1.0, early development)
   (`$MODEL::all()` was also matching `$request->all()`), fixed the same
   way (`metavariable-regex: ^[A-Z]` on the receiver).
 
+### Fixed (real-world validation — 2026-09-08)
+
+- **`laradogs.semgrep.timeout_seconds` default raised from 60s to 1200s
+  (20 minutes)**, calibrated from a real first-run validation against a
+  real, production Laravel application (908 first-party PHP/Blade files):
+  the scan timed out at 60s. Root-caused, not blindly bumped: reproducing
+  the exact invocation outside any external timeout showed Semgrep takes
+  ~0.86 seconds of its own internal per-file overhead for EACH explicitly-listed
+  target file (confirmed to scale linearly, essentially independent of
+  rule count — a 3-rule subset and the full 12-rule catalog both took
+  ~13 minutes against the same 908 files). A directory-based scan is
+  ~200x faster but was verified, live, to let the target's own
+  `.semgrepignore` silently hide 264 of 908 real files — re-confirming
+  exactly the gap Phase 5/ADR-0012 already closed — so it was rejected
+  despite the speed. See `docs/auditing/analyzers/semgrep.md#performance`
+  for the full investigation, including a further, not-yet-adopted
+  finding: Semgrep has its own built-in default ignore patterns that
+  silently excluded ~105 files even in a fresh directory with no
+  `.semgrepignore` at all.
+- `SemgrepAnalyzer`'s timeout message is now actionable: it names
+  `LARADOGS_SEMGREP_TIMEOUT_SECONDS` explicitly and states that coverage
+  stays Unknown — previously it only said "timed out after Ns."
+- Retested against the same real project after the fix: the scan
+  completed successfully (`[passed]`, 32 findings, Explicit coverage,
+  ~828s, well inside the new 1200s ceiling).
+
+### Fixed (Phase 6.1 — rule precision refinement, 2026-09-08)
+
+A read-only triage of all 32 findings from the real-world scan above
+against the real source found **zero true positives**: all 15
+`laradogs.security.filesystem.tainted-path` and all 12
+`laradogs.security.sql.tainted-raw-query` findings were false positives (4
+of the SQL ones mechanical duplicates), and 2 of 5
+`laradogs.performance.eloquent.unbounded-all` findings were also false
+positives (the other 3 were legitimate review items, exactly as that
+rule's Info/Low design intends). Refined matcher precision on these exact
+3 rules only — no rule added, removed, or renamed;
+`severity`/`confidence`/`category` unchanged.
+`SemgrepRuleCatalog::RULESET_VERSION` bumped `2026.09.2` → `2026.09.3`
+(matcher-behavior change, not a release marker).
+
+- **`laradogs.security.filesystem.tainted-path`**: every sink
+  (`file_get_contents`/`file_put_contents`/`unlink`/`fopen`/`Storage::*`)
+  rewritten as fixed-arity alternatives (explicit metavariables, never a
+  trailing `...`) plus `focus-metavariable: $X`, fixing a confirmed real
+  false positive where a server-generated, `Str::uuid()`-based PATH with
+  tainted CONTENT was flagged as path traversal. Also sets
+  `options: { taint_assume_safe_functions: true }`, fixing a second real
+  false-positive class (a tainted argument passed to a helper/service
+  method, or used in an Eloquent `->where($tainted)->get()` call, whose
+  RETURN VALUE was conservatively treated as tainted even though the
+  callee returns a fresh, server-generated value) — confirmed empirically
+  to not weaken this rule's already-tested direct-passthrough/
+  concatenation/interpolation guarantees. Accepted trade-off, documented:
+  a genuinely transparent pass-through wrapper is no longer caught either.
+- **`laradogs.security.sql.tainted-raw-query`**: the same
+  fixed-arity-plus-`focus-metavariable` fix on every sink
+  (`whereRaw`/`orderByRaw`/`selectRaw`/`havingRaw`/`DB::raw`), fixing the
+  exact real false positive this rule produced against a bound
+  `whereRaw('... = ?', [$tainted])` call — the safe pattern this rule's
+  own remediation text recommends — and eliminating the "chain-cascade"
+  duplicate finding this same root cause produced on a later, fully
+  literal `selectRaw`/`orderByRaw` chained off the same query-builder
+  variable. Also confirmed to already eliminate a third real shape (a
+  tainted value reaching only a ternary condition inline inside the
+  sink's own raw-string argument) with no further change needed.
+- **`laradogs.performance.eloquent.unbounded-all`**: the receiver
+  `metavariable-regex` fully anchored (`^[A-Z]` → `^[A-Z][A-Za-z0-9_]*$`),
+  fixing a confirmed real false positive where `$MODEL` bound an entire
+  preceding fluent chain (`SomeService::...->values()->all()`,
+  `DB::table(...)->pluck(...)->all()`) whose first character happened to
+  be uppercase, mistaking `Collection::all()` for `Model::all()`.
+- 11 new regression fixtures across the three rules' existing fixture
+  files, plus 1 new mandatory positive (`whereRaw` via concatenation) — no
+  existing fixture/test changed behavior. Full real-binary rule quality
+  gate (`LARADOGS_TEST_REAL_SEMGREP=1`) re-run: 10/10 passing, 25 findings
+  across all fixtures combined (was 24), 0 errors.
+- Retested the same real project after this fix: scan completed, coverage
+  Explicit, all findings re-triaged. See
+  `docs/auditing/rules/security-rules.md` and
+  `docs/auditing/rules/performance-rules.md` for the full before/after
+  account.
+
 ## [Unreleased] — Phase 5: Static Analysis Foundation + Semgrep
 
 ### Added

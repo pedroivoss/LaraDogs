@@ -43,16 +43,39 @@ worked example.
   this exact issue, discovered via this rule's interaction with the mass
   assignment rule during testing: `User::create($request->all())` was
   triggering BOTH rules at once). Fixed with a `metavariable-regex`
-  requiring the receiver to start with an uppercase letter
-  (`^[A-Z]`) — a `$`-prefixed variable never satisfies this, while a
-  PascalCase class reference like `User` does. Remaining, accepted
-  limitation: this still cannot distinguish a genuine Eloquent `Model`
-  from any other PascalCase-named class exposing its own unrelated static
-  `all()` method (e.g. a `Collection`-like value object, an enum-like
-  class) — Semgrep's PHP matching has no type resolution to make that
-  distinction. Given the Low confidence and Info severity already
-  reflecting "hotspot, not confirmed bug," this residual imprecision is
-  accepted rather than engineered away.
+  requiring the receiver to start with an uppercase letter (`^[A-Z]`) — a
+  `$`-prefixed variable never satisfies this, while a PascalCase class
+  reference like `User` does.
+    - **Phase 6.1 fix (real-world validation against allimaPanel,
+      2026-09-08):** that original `^[A-Z]` regex checked only the FIRST
+      CHARACTER of whatever text `$MODEL` captured, unanchored at the end.
+      Confirmed empirically that `$MODEL` can bind an entire, arbitrarily
+      long preceding fluent chain — not just a short class name — so this
+      matched `Collection::all()` (an unrelated instance method that
+      converts an already-query-bounded collection to a plain array, NOT
+      Eloquent's `Model::all()`) whenever the chain's first character
+      happened to be uppercase for a reason unrelated to the actual
+      receiver of `.all()`: two real, confirmed false positives —
+      `SomeService::call()->map()->values()->all()` and
+      `DB::table(...)->pluck(...)->unique()->all()` — both matched because
+      the chain started with `SomeService`/`DB`, several calls before the
+      final `.all()`. Confirmed by direct contrast, in the same real file,
+      with an adjacent, correctly-_unflagged_ `store::whereIn(...)
+->pluck('id')->all()` (lowercase receiver). **Fix:** fully anchor the
+      regex (`^[A-Z][A-Za-z0-9_]*$`), requiring `$MODEL`'s ENTIRE captured
+      text to be a single bare identifier — no `(`, `)`, `->`, `::`, or `.`
+      anywhere in it — which rejects every chain shape while still
+      matching real model class names (`User`, `Order`, `Survey`, ...).
+      See `tests/Fixtures/semgrep/rules/eloquent-unbounded-all.php`
+      (`safeCollectionAllFluentChain`, `safeDbTablePluckAll`) and
+      `RULESET_VERSION` `2026.09.3`.
+    - Remaining, accepted limitation: this still cannot distinguish a
+      genuine Eloquent `Model` from any other PascalCase-named class
+      exposing its own unrelated static `all()` method called directly
+      (e.g. `SomeEnum::all()`) — Semgrep's PHP matching has no type
+      resolution to make that distinction. Given the Low confidence and
+      Info severity already reflecting "hotspot, not confirmed bug," this
+      residual imprecision is accepted rather than engineered away.
 - **Remediation:** if this table can grow unbounded, replace `::all()`
   with `::paginate()`/`::cursor()`/a bounded `::limit()`. If the table
   size is and will remain small, this finding can be safely dismissed —

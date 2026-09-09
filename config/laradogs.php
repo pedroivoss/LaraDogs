@@ -127,14 +127,84 @@ return [
     | LaraDogs looks for `semgrep` on its OWN PATH via Symfony's
     | ExecutableFinder.
     |
-    | `timeout_seconds` bounds the whole `semgrep scan` process (enforced by
-    | SymfonyProcessRunner); `per_file_timeout_seconds` is Semgrep's own
-    | `--timeout` (per rule/file — Semgrep's own default is 5s, passed
-    | explicitly here for clarity rather than relying on that implicit
-    | default); `max_target_bytes` is Semgrep's own `--max-target-bytes`
+    | `timeout_seconds` and `per_file_timeout_seconds` are TWO DIFFERENT
+    | timeout concepts — never confuse them:
+    |
+    |   A. `per_file_timeout_seconds` -> Semgrep's own `--timeout`: how long
+    |      a SINGLE rule may spend on a SINGLE file before Semgrep itself
+    |      aborts just that (rule, file) pair (recorded as a `Timeout` entry
+    |      in that run's `errors[]`, which is exactly what makes
+    |      SemgrepCoverageEvaluator fall back to Unknown coverage — see
+    |      docs/auditing/analyzers/semgrep.md#coverage). A timed-out file
+    |      does NOT stop the rest of the scan.
+    |   B. `timeout_seconds` -> the WHOLE-PROCESS external timeout, enforced
+    |      by SymfonyProcessRunner (Symfony Process's own `setTimeout()`).
+    |      If the ENTIRE `semgrep scan` invocation (every rule against every
+    |      collected file) has not finished by this deadline, the whole
+    |      subprocess is killed and `SemgrepAnalyzer::run()` reports
+    |      ExecutionStatus::TimedOut (fail-closed: no findings trusted, no
+    |      coverage claimed — see `docs/auditing/analyzers/semgrep.md`).
+    |
+    | `timeout_seconds`'s default (1200s = 20 minutes) is NOT arbitrary —
+    | it is calibrated from a real measurement (Phase 6 real-world
+    | validation, 2026-09-08): a real, production-sized Laravel application
+    | (908 first-party PHP/Blade files after LaraDogs' own vendor/
+    | node_modules/storage/etc. exclusions) took ~767-784 seconds
+    | (~0.86s/file) for a full scan with the entire bundled ruleset —
+    | confirmed, empirically, to scale LINEARLY with the number of target
+    | FILES, essentially independent of rule count (a 3-rule subset and the
+    | full 12-rule set both took ~13 minutes against the same 908 files).
+    | Root cause (see docs/auditing/analyzers/semgrep.md#performance): when
+    | Semgrep is given hundreds of separate file paths as individual
+    | scanning-root arguments (LaraDogs' own explicit-file-list strategy,
+    | which is REQUIRED for security — see below), it pays a fixed ~0.86s
+    | of its own internal per-root overhead for EACH one; this is NOT a
+    | LaraDogs inefficiency and is NOT reduced by simpler/fewer rules.
+    | 1800s (raised from an original 1200s during Phase 6.1's rule-precision
+    | refinement, 2026-09-08/09) gives a real 900-file-scale project ~2x
+    | headroom over the measured worst case, while remaining a firm, finite
+    | ceiling that still eventually kills a hostile or degenerate target
+    | rather than hanging indefinitely. Root-caused before raising, per the
+    | same methodology as the original 1200s calibration above: after
+    | Phase 6.1 rewrote several rules' sink patterns as fixed-arity
+    | `pattern-either` alternatives (to fix real false positives — see
+    | docs/auditing/rules/security-rules.md), one full real-world audit run
+    | timed out at 1200s; a clean, isolated re-measurement of the exact same
+    | invocation (semgrep subprocess only, no other work running
+    | concurrently) came back at ~864s — essentially unchanged from the
+    | pre-Phase-6.1 ~767-828s, i.e. the additional pattern-either
+    | alternatives did NOT meaningfully increase Semgrep's own per-file
+    | cost. The 1200s timeout was almost certainly exhausted by ordinary
+    | machine load (other concurrent work on the same machine at the time),
+    | not a ruleset regression — but since real audits do run on shared,
+    | loaded machines, headroom was widened accordingly rather than left
+    | at the original, now-uncomfortably-tight 35% margin. A significantly
+    | larger project (or a heavily loaded machine) may still need this
+    | raised further via `LARADOGS_SEMGREP_TIMEOUT_SECONDS` — this is
+    | LaraDogs' own env var, read from LaraDogs' own `.env`/environment,
+    | never the target's.
+    |
+    | A directory-based scan (letting Semgrep discover files itself) was
+    | measured to be ~200x faster (~3s for the same real project) — but was
+    | REJECTED as an alternative: verified, live, against this exact real
+    | project, that the target's own `.semgrepignore` silently hid 264 of
+    | 908 real first-party files from such a scan (the same bypass Phase 5/
+    | ADR-0012 already closed by adopting the explicit-file-list strategy
+    | in the first place). A further experiment (copying LaraDogs-selected
+    | files into a fresh, target-`.semgrepignore`-free synthetic directory)
+    | was also fast (~3s) but uncovered a NEW, not-yet-fully-characterized
+    | gap: Semgrep has its own BUILT-IN default ignore patterns (e.g.
+    | common `tests/` subpaths) that silently excluded ~105 files even with
+    | zero `.semgrepignore` present at all. Neither faster alternative is
+    | adopted this phase — the explicit-file-list strategy's slower but
+    | PROVEN-COMPLETE (zero silent exclusions, verified) behavior is kept.
+    | This trade-off (correctness over speed) is deliberate — see
+    | docs/auditing/analyzers/semgrep.md#performance for the full account.
+    |
+    | `max_target_bytes` is Semgrep's own `--max-target-bytes`
     | (Semgrep's own default is 1,000,000 bytes, passed explicitly for the
-    | same reason — verified empirically that a file over this limit is
-    | silently skipped unless `--verbose` is also passed, which
+    | same clarity reason — verified empirically that a file over this
+    | limit is silently skipped unless `--verbose` is also passed, which
     | SemgrepAnalyzer always does; see docs/auditing/analyzers/semgrep.md).
     |
     | `settings_path` is always forced into the child process as
@@ -150,7 +220,7 @@ return [
 
     'semgrep' => [
         'binary' => env('LARADOGS_SEMGREP_BINARY'),
-        'timeout_seconds' => (int) env('LARADOGS_SEMGREP_TIMEOUT_SECONDS', 60),
+        'timeout_seconds' => (int) env('LARADOGS_SEMGREP_TIMEOUT_SECONDS', 1800),
         'per_file_timeout_seconds' => (int) env('LARADOGS_SEMGREP_PER_FILE_TIMEOUT_SECONDS', 5),
         'max_target_bytes' => (int) env('LARADOGS_SEMGREP_MAX_TARGET_BYTES', 1_000_000),
         'settings_path' => env('LARADOGS_SEMGREP_SETTINGS_PATH', storage_path('app/laradogs/semgrep-settings.yml')),

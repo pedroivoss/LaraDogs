@@ -75,6 +75,35 @@ one). Migrations use only portable Laravel primitives, per
 (SQLite/MySQL/MariaDB/PostgreSQL) — no vendor-specific enum types, JSON
 operators, generated columns, or partial indexes.
 
+**Sub-phases (both delivered on top of this phase's own schema/pipeline,
+each documented as an amendment rather than a new top-level phase — this
+document's official phase list stays exactly as numbered below):**
+
+- **Phase 3.1 — Safe Finding Resolution Coverage.** Closed a real gap in
+  this phase's original auto-resolution rule: an analyzer merely
+  `Passed`-ing said nothing about which specific rules it had actually
+  verified, so a finding whose rule was silently disabled/removed could
+  be wrongly auto-resolved. Added `AnalyzerCoverage` (`Full`/`Explicit`/
+  `Unknown`) to `AnalyzerResult`; `FindingReconciler` now only
+  auto-resolves when coverage explicitly verifies the finding's own
+  `rule_id` — never from `Passed` alone. See
+  [ADR-0010's amendment](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md#amendment-phase-31-coverage-gated-auto-resolution).
+- **Phase 3.2 — Persistent Project Audit Workflow.** Phase 3 above
+  already shipped the full `Project`/`Scan`/... persistence schema and
+  the `ScanRunner`/`ScanRecorder`/`FindingIngestor`/`FindingReconciler`
+  pipeline, but nothing outside tests ever called it — no CLI command
+  created a `Project` row or ran a persisted audit. Phase 3.2 added
+  exactly that missing application-level glue and nothing else: project
+  registration with idempotent duplicate-path semantics
+  (`RegisterProject`), persisted-audit orchestration that re-runs
+  Discovery fresh every time and delegates entirely to the existing
+  `ScanRunner` (`RunProjectAudit`), a project/scan/finding query layer
+  (`App\Audit\Projects\Query`), and three new CLI commands
+  (`laradogs:project:add`/`list`/`audit`) alongside the existing,
+  unchanged `laradogs:inspect`/`laradogs:audit`. No dashboard, no MCP, no
+  Git integration, no quality gates — see
+  [`../auditing/projects.md`](../auditing/projects.md).
+
 ## Phase 4 — Security / Dependency Scanners 🚧 In progress
 
 First real scanner integrations: `composer audit`, `npm audit`,

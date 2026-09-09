@@ -2,8 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Audit\Discovery\DiscoveryResult;
-use App\Audit\Discovery\DiscoveryStatus;
 use App\Audit\Discovery\ProjectDiscovery;
 use App\Audit\Engine\AuditContext;
 use App\Audit\Engine\AuditEngine;
@@ -54,7 +52,7 @@ final class AuditCommand extends Command
         $discoveryResult = $discovery->discover($path);
 
         if ($discoveryResult->profile === null) {
-            $this->error($this->describeDiscoveryFailure($discoveryResult));
+            $this->error($discoveryResult->status->describe($discoveryResult->path));
 
             return self::FAILURE;
         }
@@ -131,16 +129,6 @@ final class AuditCommand extends Command
         $scoped->register($analyzer);
 
         return $scoped;
-    }
-
-    private function describeDiscoveryFailure(DiscoveryResult $result): string
-    {
-        return match ($result->status) {
-            DiscoveryStatus::PathNotFound => "Path not found: {$result->path}",
-            DiscoveryStatus::PathNotDirectory => "Not a directory: {$result->path}",
-            DiscoveryStatus::PathNotReadable => "Path is not readable: {$result->path}",
-            DiscoveryStatus::Ok => 'Unexpected: reported as failure but status is ok.',
-        };
     }
 
     private function renderHuman(AuditRunResult $result): void

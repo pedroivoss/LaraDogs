@@ -6,6 +6,77 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 3.2: Persistent Project Audit Workflow
+
+A sub-phase of official Phase 3 (Finding Domain + Persistence), same
+convention as Phase 3.1/4.1/4.2 — not
+`docs/roadmap/phases.md`'s own official "Phase 7 — Dashboard" (still not
+started, unrelated to this work). See
+[`docs/auditing/projects.md`](docs/auditing/projects.md).
+
+### Added
+
+- **`App\Audit\Projects\RegisterProject`** — registers a local directory
+  as a `Project` LaraDogs can repeatedly audit. Idempotent: registering
+  the same realpath-resolved path twice returns the existing project,
+  never a duplicate (backed by a new `projects.path` unique index, not
+  just an application-level check). Never executes anything from the
+  target — only `ProjectDiscovery`'s own static inspection runs.
+- **`App\Audit\Projects\RunProjectAudit`** — persisted-audit orchestration
+  for an already-registered project. Re-discovers the project's stack
+  fresh every audit (never trusts a stale registration-time snapshot),
+  then delegates entirely to the already-existing `ScanRunner`/
+  `ScanRecorder`/`FindingIngestor`/`FindingReconciler` pipeline (Phase 3) — no persistence logic was duplicated. Refuses to start a second
+  audit while one is already `running` for the same project (a small,
+  portable, advisory guard — no distributed locking/Redis introduced).
+- **`App\Audit\Projects\Query`** — a small query/service layer for a
+  future Dashboard/MCP adapter: `ProjectListQuery` (project list with
+  latest-scan + open-finding-count, no N+1 via Eloquent's `latestOfMany()`
+  correlated-subquery join), `ScanHistoryQuery` (recent scans, one scan's
+  detail), `CurrentFindingsQuery` + `FindingFilters` (a project's current
+  findings, filterable by status/severity/category/analyzer/rule; findings
+  observed in one specific scan), `ProjectSummaryQuery` + `ProjectSummary`
+  (totals, open-findings breakdown by severity/category, last scan's
+  per-analyzer statuses — deliberately no health score, no formula
+  specified for one).
+- Three new CLI commands: `laradogs:project:add {path}`,
+  `laradogs:project:list`, `laradogs:project:audit {project}` — all
+  support `--json`, all return a non-zero exit code with a plain
+  diagnostic (never a stack trace) for expected user errors. The existing
+  `laradogs:inspect`/`laradogs:audit` (ad-hoc, never persist) are
+  unchanged.
+- `Project::latestScan()` relation (`hasOne(...)->latestOfMany('started_at')`)
+  and a new migration adding a unique index on `projects.path`.
+- `DiscoveryStatus::describe(string $path): string` — the
+  path-not-found/not-a-directory/not-readable message mapping, extracted
+  from three now-identical private methods (`AuditCommand`,
+  `InspectProjectCommand`, and the two new project commands) into one
+  place.
+- `docs/auditing/projects.md` — registration/duplicate semantics, path
+  availability and failure behavior, registration vs. scan-time profile,
+  concurrency behavior, the query layer, CLI reference, path-privacy
+  policy, Docker workflow, known limitations.
+- 37 new tests: project registration (valid/duplicate/invalid path/
+  symlink normalization/distinct projects), persisted-audit orchestration
+  end-to-end (Scan/executions/findings/occurrences/profile-snapshot
+  persistence, multi-scan history, concurrent-audit refusal, disappeared
+  path, analyzer timeout/failure), the full Phase 3.1 reconciliation
+  matrix exercised through the PERSISTED workflow specifically (verified
+  auto-resolve, Unknown-coverage non-resolution, regression/reopen,
+  suppressed-status preservation), the query layer (list/history/
+  filtering/summary), and CLI human+JSON output for all three new
+  commands. All against synthetic fixtures under `tests/Fixtures/
+discovery/` — no real project outside this repository's own fixtures.
+
+### Fixed
+
+- `ScanHistoryQuery::recentFor()` orders by `started_at DESC, id DESC` —
+  caught during this work's own test-writing: two scans started within
+  the same second (a real possibility; `started_at` is only
+  second-precision, portable across SQLite/MySQL/MariaDB/PostgreSQL)
+  otherwise sorted nondeterministically. A genuine, if latent, ordering
+  correctness fix, not merely a test workaround.
+
 ## [Unreleased] — Phase 6: First Laravel-Aware Ruleset
 
 ### Added

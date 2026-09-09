@@ -2,8 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Audit\Discovery\DiscoveryResult;
-use App\Audit\Discovery\DiscoveryStatus;
 use App\Audit\Discovery\Profile\PackageManager;
 use App\Audit\Discovery\Profile\ProjectProfile;
 use App\Audit\Discovery\ProjectDiscovery;
@@ -29,7 +27,7 @@ final class InspectProjectCommand extends Command
         $result = $discovery->discover($path);
 
         if ($result->profile === null) {
-            $this->error($this->describeFailure($result));
+            $this->error($result->status->describe($result->path));
 
             return self::FAILURE;
         }
@@ -43,16 +41,6 @@ final class InspectProjectCommand extends Command
         $this->renderHuman($result->profile);
 
         return self::SUCCESS;
-    }
-
-    private function describeFailure(DiscoveryResult $result): string
-    {
-        return match ($result->status) {
-            DiscoveryStatus::PathNotFound => "Path not found: {$result->path}",
-            DiscoveryStatus::PathNotDirectory => "Not a directory: {$result->path}",
-            DiscoveryStatus::PathNotReadable => "Path is not readable: {$result->path}",
-            DiscoveryStatus::Ok => 'Unexpected: reported as failure but status is ok.',
-        };
     }
 
     private function renderHuman(ProjectProfile $profile): void

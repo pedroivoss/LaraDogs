@@ -88,6 +88,11 @@ Implemented/Planned split.
     - [`auditing/severity.md`](auditing/severity.md)
     - [`auditing/confidence.md`](auditing/confidence.md)
     - [`auditing/suppressions.md`](auditing/suppressions.md)
+- [`auditing/projects.md`](auditing/projects.md) — **Implemented.**
+  Registering a project, running repeated persisted audits against it,
+  scan history, and the query/service layer a future Dashboard/MCP
+  adapter will consume — the application-level glue on top of Phase 3's
+  already-complete persistence layer.
 - [`development/process-execution.md`](development/process-execution.md)
   — **Implemented (Phase 4).** The real `ProcessRunner`/`SymfonyProcessRunner`
   safety model: argv-only, env allowlisting, timeouts, output capping.

@@ -198,6 +198,17 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   regression, ~382MB image-size impact). See
   [`docs/auditing/analyzers/semgrep.md`](docs/auditing/analyzers/semgrep.md)
   and [`docs/auditing/static-analysis.md`](docs/auditing/static-analysis.md).
+- **Persisted project registration & repeated audits** — register a
+  directory once (`laradogs:project:add`, idempotent by resolved path),
+  then run repeated, history-preserving audits against it
+  (`laradogs:project:audit`) through the same real analyzers/lifecycle
+  above — each run creates a new immutable Scan; nothing is ever
+  overwritten. A small project/scan/finding query-and-summary layer
+  exists underneath (list projects, scan history, current findings with
+  status/severity/category/analyzer/rule filters, per-project summary
+  counts) for a future Dashboard/MCP adapter to build on — no dashboard
+  UI or MCP server exists yet. See
+  [`docs/auditing/projects.md`](docs/auditing/projects.md).
 - A Laravel 13 application with React + Inertia (official starter kit),
   Fortify-based authentication, and a single authenticated dashboard page
   (Phase 0).
@@ -303,6 +314,12 @@ own fixtures) is worthwhile. Every command below was run against a real
 project (this repository itself) before being documented — none are
 aspirational.
 
+Two separate workflows exist — pick whichever fits:
+
+### Quick ad-hoc audit (nothing persisted)
+
+For a one-off look at any directory, with no setup and no history kept:
+
 ```bash
 # Stack detection only — no scanners run, nothing is persisted.
 php artisan laradogs:inspect /path/to/your/laravel/project
@@ -321,6 +338,30 @@ php artisan laradogs:audit /path/to/your/laravel/project --analyzer=semgrep
 # id, severity, confidence, file, line, message, recommendation, CWE):
 php artisan laradogs:audit /path/to/your/laravel/project --json
 ```
+
+### Persistent project workflow (scan history kept)
+
+For repeated audits of the same project, with a scan history and finding
+lifecycle (open → resolved → reopened) tracked across runs:
+
+```bash
+# Register the project once (idempotent — registering the same path
+# again just returns the existing project, never a duplicate).
+php artisan laradogs:project:add /path/to/your/laravel/project
+
+# See every registered project, its latest scan, and its open finding count.
+php artisan laradogs:project:list
+
+# Run a persisted audit — creates a new, immutable Scan; findings persist
+# through the same lifecycle (auto-resolution, regression/reopen,
+# suppression) documented below.
+php artisan laradogs:project:audit {project-id}
+```
+
+See [`docs/auditing/projects.md`](docs/auditing/projects.md) for
+registration/duplicate semantics, path-availability/failure behavior,
+concurrency behavior, and the query layer a future Dashboard/MCP adapter
+will build on.
 
 Human-readable output shows, per finding: severity, rule id, category,
 confidence, `file:line`, and message — e.g.:

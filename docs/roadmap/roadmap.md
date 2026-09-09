@@ -7,7 +7,7 @@
 | 0     | Discovery / Architecture / Bootstrap    | **Complete**                                                                                                                                                                                                        |
 | 1     | Project Discovery (stack detection)     | **Complete**                                                                                                                                                                                                        |
 | 2     | Audit Engine Foundation                 | **Complete**                                                                                                                                                                                                        |
-| 3     | Finding Domain + Persistence            | **Complete**                                                                                                                                                                                                        |
+| 3     | Finding Domain + Persistence            | **Complete** (3.1 Safe Finding Resolution Coverage done; 3.2 Persistent Project Audit Workflow done — see below)                                                                                                    |
 | 4     | Security / Dependency Scanners          | **In progress** (`composer audit` + `npm audit` done; a 12-rule Semgrep foundation done, including a first Laravel-aware slice — see below; OSV-Scanner/Trivy and a comprehensive Semgrep rule library not started) |
 | 5     | Bug / Quality Analysis                  | Not started                                                                                                                                                                                                         |
 | 6     | Performance Analysis                    | Not started                                                                                                                                                                                                         |
@@ -84,6 +84,31 @@ candidates only, plus
 [ADR-0010](../architecture/decisions/ADR-0010-finding-identity-occurrences-and-lifecycle.md).
 No real scanner integration, no dashboard, no MCP server — see the Phase
 3 report for the full account.
+
+## What Phase 3.2 actually delivered
+
+**Phase 3.2 — Persistent Project Audit Workflow.** Not this table's
+official Phase 7 (Dashboard, still not started) — a sub-phase of Phase 3
+above, same convention as Phase 4.1/4.2 below. Phase 3 already shipped the
+full persistence schema and the
+`ScanRunner`/`ScanRecorder`/`FindingIngestor`/`FindingReconciler`
+pipeline, but nothing outside tests ever called it. This work adds the
+missing application-level glue: `App\Audit\Projects\RegisterProject`
+(idempotent registration — the same resolved, realpath-normalized path
+returns the existing `Project`, never a duplicate, backed by a new
+`projects.path` unique index), `App\Audit\Projects\RunProjectAudit`
+(re-discovers a project's stack fresh every audit — never trusts a stale
+registration-time snapshot — then delegates entirely to the existing
+`ScanRunner`; refuses to start a second audit while one is already
+`running` for the same project), and a small `App\Audit\Projects\Query`
+service layer (project list, scan history, current findings with
+status/severity/category/analyzer/rule filters, project summary — no
+health score, no formula specified for one). Three new CLI commands
+(`laradogs:project:add`/`list`/`audit`) alongside the existing, unchanged
+`laradogs:inspect`/`laradogs:audit`. 37 new tests, all against synthetic
+fixtures (no real project outside this repository's own
+`tests/Fixtures/discovery/`). See
+[`../auditing/projects.md`](../auditing/projects.md).
 
 ## What Phase 4 actually delivered
 

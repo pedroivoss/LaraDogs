@@ -206,12 +206,20 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   overwritten. A small project/scan/finding query-and-summary layer
   exists underneath (list projects, scan history, current findings with
   status/severity/category/analyzer/rule filters, per-project summary
-  counts) for a future Dashboard/MCP adapter to build on — no dashboard
-  UI or MCP server exists yet. See
-  [`docs/auditing/projects.md`](docs/auditing/projects.md).
-- A Laravel 13 application with React + Inertia (official starter kit),
-  Fortify-based authentication, and a single authenticated dashboard page
-  (Phase 0).
+  counts). See [`docs/auditing/projects.md`](docs/auditing/projects.md).
+- **An authenticated Dashboard** — Projects, Project Detail (summary,
+  analyzer status, current findings, scan history), a
+  filtered/paginated Findings browser, Scan History/Detail, and Finding
+  Detail with lifecycle status actions (open/confirmed/resolved/
+  accepted-risk/false-positive/ignored, reason-enforced server-side) —
+  built entirely on the query layer above, no second audit engine.
+  Registering a project and triggering a NEW audit remain CLI-only this
+  phase — see [`docs/dashboard.md`](docs/dashboard.md) for why, and its
+  own known limitations.
+- A Laravel 13 application with React + Inertia (official starter kit)
+  and Fortify-based authentication (Phase 0), now serving the real
+  Dashboard above (Phase 7) instead of the starter kit's original
+  placeholder page.
 - Configurable SQL persistence (SQLite by default for zero-config Quick
   Start; MySQL, MariaDB, and PostgreSQL are also officially supported — see
   [Database support](#database-support)), `/up` health check, Pest test
@@ -240,9 +248,11 @@ the Semgrep foundation):
   comparison **report** (the underlying regression/reopen lifecycle
   exists; a NEW/RESOLVED/UNCHANGED/REGRESSED report view doesn't), quality
   gates.
-- The real Dashboard (findings/scans/rules/reports/quality
-  gates/integrations/MCP access/system/updates), the MCP server, MCP
-  credentials, Git/CI continuous monitoring.
+- Dashboard-triggered audits and project registration (both remain
+  CLI-only — see [`docs/dashboard.md`](docs/dashboard.md)), a
+  rules/reports/quality-gates/integrations/MCP-access/system/updates area
+  of the Dashboard, the MCP server, MCP credentials, Git/CI continuous
+  monitoring.
 
 **Planned:** see [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md) for
 the full phase list.
@@ -360,8 +370,11 @@ php artisan laradogs:project:audit {project-id}
 
 See [`docs/auditing/projects.md`](docs/auditing/projects.md) for
 registration/duplicate semantics, path-availability/failure behavior,
-concurrency behavior, and the query layer a future Dashboard/MCP adapter
-will build on.
+concurrency behavior, and the query layer the Dashboard (and a future MCP
+adapter) build on. The Dashboard itself — Projects, Project Detail,
+Findings browser, Scan History/Detail, Finding Detail with lifecycle
+actions — is reachable at `/dashboard` after logging in; see
+[`docs/dashboard.md`](docs/dashboard.md).
 
 Human-readable output shows, per finding: severity, rule id, category,
 confidence, `file:line`, and message — e.g.:
@@ -437,16 +450,18 @@ calling agent does that, using context LaraDogs provides. See
 ## Roadmap
 
 Phase 0 (bootstrap), Phase 1 (Project Discovery), Phase 2 (Audit Engine
-Foundation), and Phase 3 (Finding Domain + Persistence) are complete.
-Phase 4 (Security/Dependency Scanners) is in progress — `composer audit`,
+Foundation), Phase 3 (Finding Domain + Persistence, including its 3.1
+Safe-Finding-Resolution-Coverage and 3.2 Persistent-Project-Audit-Workflow
+sub-phases), and Phase 7 (Dashboard) are complete. Phase 4
+(Security/Dependency Scanners) is in progress — `composer audit`,
 `npm audit`, and Semgrep (foundation + a first Laravel-aware ruleset, 12
 rules) are done (tracked in commit history/ADR notes as sub-phases
 4/4.1/4.2/4.2.1/5/6); other scanners (PHPStan/Larastan, ESLint,
 OSV-Scanner, Trivy) and the COMPREHENSIVE Laravel-aware Semgrep rule
-library are not started. This
-document's own coarse Phases 5–13 (Bug/Quality Analysis, Performance
-Analysis, Dashboard, ...) are not started. Full list, current position,
-and items deliberately deferred:
+library are not started. This document's own coarse Phases 5, 6, 8–13
+(Bug/Quality Analysis, Performance Analysis, History/Comparison/Quality
+Gates, MCP, ...) are not started. Full list, current position, and items
+deliberately deferred:
 [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
 
 ## Contributing

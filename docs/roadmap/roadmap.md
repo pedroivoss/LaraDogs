@@ -11,7 +11,7 @@
 | 4     | Security / Dependency Scanners          | **In progress** (`composer audit` + `npm audit` done; a 12-rule Semgrep foundation done, including a first Laravel-aware slice — see below; OSV-Scanner/Trivy and a comprehensive Semgrep rule library not started) |
 | 5     | Bug / Quality Analysis                  | Not started                                                                                                                                                                                                         |
 | 6     | Performance Analysis                    | Not started                                                                                                                                                                                                         |
-| 7     | Dashboard                               | Not started                                                                                                                                                                                                         |
+| 7     | Dashboard                               | **Complete** (see below)                                                                                                                                                                                            |
 | 8     | History / Comparison / Quality Gates    | Not started                                                                                                                                                                                                         |
 | 9     | MCP                                     | Not started                                                                                                                                                                                                         |
 | 10    | Authentication / MCP Credentials        | Not started                                                                                                                                                                                                         |
@@ -330,6 +330,49 @@ phase's own instruction), no PHPStan/ESLint/OSV-Scanner/Trivy, no
 auto-fix/AI remediation, no dashboard, no MCP server, no inline
 suppression UX (the underlying lifecycle already supports it; only the
 UI/CLI to drive it is still missing).
+
+## What Phase 7 actually delivered
+
+The first authenticated web UI (`app/Http/Controllers/{DashboardController,
+FindingsController,Projects/*}`, `resources/js/pages/{dashboard,projects/*,
+findings/show}.tsx`): a Projects list, Project Detail (summary, analyzer
+status with coverage explained via tooltip, current findings preview,
+recent scans preview), a server-side filtered (status/severity/category/
+analyzer/rule) and paginated Findings browser, Scan History (paginated)
+and Scan Detail (the project's own historical snapshot — never substituted
+with current state), and Finding Detail (full evidence, safely-escaped
+code snippets, occurrences, status history) with a lifecycle status-change
+dialog routed through the existing, unmodified `FindingLifecycleService`
+— the first real caller of `ActorType::User`. Every route uses each
+model's public ULID, never the internal numeric id, and every route
+requires `auth`+`verified` (the same middleware the pre-existing
+`/dashboard` placeholder already used). Two existing Phase 3.2 query
+methods (`CurrentFindingsQuery::forProject()`, `ScanHistoryQuery::
+recentFor()`) gained non-breaking paginated siblings
+(`paginateForProject()`/`paginateFor()`); one genuinely new cross-project
+aggregate, `DashboardSummaryQuery`, was added since nothing existing
+answers "across every registered project." `App\Audit\Projects\
+StaleScanReclaimer` closes the Phase 3.2 "a crashed process can leave a
+Scan stuck Running" limitation (age-threshold-based, no Redis, touches no
+Finding) — built as required prerequisite groundwork even though
+Dashboard-triggered audits themselves were deliberately NOT implemented
+this phase (a synchronous HTTP-held-open scan would reproduce the
+stale-scan problem via browser/proxy timeouts; a queued job has no
+monitored worker process yet) — Project Detail shows the exact CLI
+command instead. Project registration also remains CLI-only, the same
+reasoning. New reusable frontend components:
+`SeverityBadge`/`ConfidenceBadge`/`FindingStatusBadge`/
+`AnalyzerStatusBadge`/`CoverageBadge` (deliberately distinct visual
+languages — confidence must never look like severity), `CodeSnippet`
+(plain JSX text interpolation only, never `dangerouslySetInnerHTML`),
+`EmptyState`, `DataPagination`. 60 new backend tests (auth-required on
+every route, real persisted data, N+1 check, pagination, filtering,
+historical-snapshot correctness, lifecycle transition + required-reason
+enforcement + suppressed-status preservation, Failed/TimedOut/Unknown-
+coverage representation, public-ULID-not-numeric-id verification, no
+unauthorized mutation). No health score, no charts/trend lines, no MCP
+server, no Git integration, no quality gates, no allimaPanel-specific
+code — see [`../dashboard.md`](../dashboard.md) for the full account.
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

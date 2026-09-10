@@ -6,6 +6,78 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 7: Dashboard
+
+The canonical, official roadmap Phase 7 — see
+[`docs/dashboard.md`](docs/dashboard.md).
+
+### Added
+
+- **The first authenticated Dashboard**: Projects list, Project Detail
+  (summary, analyzer status with a coverage-mode tooltip, current
+  findings preview, recent scans preview), a server-side filtered
+  (status/severity/category/analyzer/rule) and paginated Findings
+  browser, Scan History (paginated) and Scan Detail (each scan's own
+  immutable historical snapshot — never substituted with current
+  project state), and Finding Detail (full evidence, safely-escaped code
+  snippets, occurrences, status history) with a lifecycle status-change
+  dialog. Every route requires `auth`+`verified` and uses each model's
+  public ULID, never the internal numeric id.
+- **The Dashboard's one mutation** — finding status transitions — routes
+  entirely through the existing, unmodified `FindingLifecycleService`;
+  `UpdateFindingStatusRequest` validates shape only, never duplicates
+  which statuses require a reason (that rule stays solely in the domain
+  service, so a client can't bypass it by skipping its own validation).
+  First real caller of `ActorType::User` in shipped code.
+- `App\Audit\Projects\Query\CurrentFindingsQuery::paginateForProject()`
+  and `ScanHistoryQuery::paginateFor()` — non-breaking paginated siblings
+  of the existing unbounded methods, added because the Dashboard's
+  findings/scan-history browsers must never load an unbounded list.
+- `App\Audit\Projects\Query\DashboardSummaryQuery` (+`DashboardSummary`) —
+  the one genuinely new cross-project aggregate (total/open findings,
+  critical/high counts, recent scans, analyzer problems), using SQL
+  aggregation rather than a full table scan into memory.
+- **`App\Audit\Projects\StaleScanReclaimer`** — closes the Phase 3.2 known
+  limitation ("a crashed process can leave a Scan stuck `running`
+  indefinitely"): a `running` Scan older than
+  `LARADOGS_STALE_SCAN_THRESHOLD_SECONDS` (default 3600s) is reclaimed
+  (marked `failed`) the next time an audit is attempted for that project.
+  No Redis, no new infrastructure; never touches any `Finding`. Wired
+  into `RunProjectAudit::run()`, so this also improves the existing
+  CLI-triggered workflow, not just a hypothetical future one.
+- New reusable frontend components (`resources/js/components/audit/`):
+  `SeverityBadge`, `ConfidenceBadge` (deliberately a different visual
+  language from severity — never implies "high confidence = high
+  severity"), `FindingStatusBadge`, `AnalyzerStatusBadge`,
+  `CoverageBadge` (tooltip-explained), `CodeSnippet` (plain JSX text
+  interpolation only — never `dangerouslySetInnerHTML`, so finding
+  content can never be rendered as HTML), `EmptyState`, `DataPagination`.
+  Plus 3 manually-added shadcn primitives (`table`, `pagination`,
+  `textarea` — no new Radix dependency needed) and a centralized
+  `resources/js/types/audit.ts` mirroring the backend's Severity/
+  FindingStatus/ExecutionStatus/CoverageMode/... enums.
+- 60 new backend tests: auth-required on every route, real persisted data
+  (no fake/hardcoded production data anywhere), no-N+1 check, server-side
+  pagination and filtering, historical-snapshot correctness, lifecycle
+  transition + required-reason enforcement + suppressed-status
+  preservation + invalid-transition rejection, Failed/TimedOut/Unknown-
+  coverage representation (never presented as clean), public-ULID
+  verification, no-unauthorized-mutation, stale-scan reclaim (+
+  non-stale-still-blocks regression).
+
+### Decisions (documented, not implemented — see `docs/dashboard.md`)
+
+- **Dashboard-triggered audits: CLI-only this phase.** A synchronous
+  HTTP-request-held-open scan would itself reproduce the stale-scan
+  problem via browser/reverse-proxy timeouts (Semgrep alone can take up
+  to 1800s); a queued job has no documented, monitored worker process
+  yet. Project Detail shows the exact `laradogs:project:audit` command
+  instead.
+- **Project registration: CLI-only this phase**, same reasoning — no
+  arbitrary server-side file browser was built.
+- No health score, no charts/trend lines (no historical-comparison
+  semantics exist yet to make one meaningful).
+
 ## [Unreleased] — Phase 3.2: Persistent Project Audit Workflow
 
 A sub-phase of official Phase 3 (Finding Domain + Persistence), same

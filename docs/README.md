@@ -88,11 +88,17 @@ Implemented/Planned split.
     - [`auditing/severity.md`](auditing/severity.md)
     - [`auditing/confidence.md`](auditing/confidence.md)
     - [`auditing/suppressions.md`](auditing/suppressions.md)
-- [`auditing/projects.md`](auditing/projects.md) — **Implemented.**
-  Registering a project, running repeated persisted audits against it,
-  scan history, and the query/service layer a future Dashboard/MCP
-  adapter will consume — the application-level glue on top of Phase 3's
+- [`auditing/projects.md`](auditing/projects.md) — **Implemented
+  (Phase 3.2).** Registering a project, running repeated persisted audits
+  against it, scan history, and the query/service layer the Dashboard
+  (Phase 7) consumes — the application-level glue on top of Phase 3's
   already-complete persistence layer.
+- [`dashboard.md`](dashboard.md) — **Implemented (Phase 7).** The first
+  authenticated web UI: Projects, Project Detail, a filtered/paginated
+  Findings browser, Scan History/Detail, Finding Detail with lifecycle
+  status actions — an adapter over the query layer above, with no audit
+  logic of its own. Also records the audit-trigger and stale-scan-recovery
+  design decisions this phase made.
 - [`development/process-execution.md`](development/process-execution.md)
   — **Implemented (Phase 4).** The real `ProcessRunner`/`SymfonyProcessRunner`
   safety model: argv-only, env allowlisting, timeouts, output capping.

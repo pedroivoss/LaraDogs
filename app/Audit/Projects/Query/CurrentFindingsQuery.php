@@ -8,6 +8,7 @@ use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
  * "Current findings" for a Project are simply its {@see Finding} rows —
@@ -30,6 +31,24 @@ final class CurrentFindingsQuery
         $this->applyFilters($query, $filters);
 
         return $query->orderByDesc('last_seen_at')->get();
+    }
+
+    /**
+     * Same data as {@see forProject()}, server-side paginated — for a
+     * findings BROWSER (e.g. the Dashboard), which must never load an
+     * unbounded list into memory. Reads the current page from the
+     * request's own `page` query parameter (Laravel's standard
+     * pagination convention), so callers don't pass it explicitly.
+     *
+     * @return LengthAwarePaginator<int, Finding>
+     */
+    public function paginateForProject(Project $project, ?FindingFilters $filters = null, int $perPage = 25): LengthAwarePaginator
+    {
+        $query = Finding::query()->where('project_id', $project->id);
+
+        $this->applyFilters($query, $filters);
+
+        return $query->orderByDesc('last_seen_at')->orderByDesc('id')->paginate($perPage)->withQueryString();
     }
 
     /**

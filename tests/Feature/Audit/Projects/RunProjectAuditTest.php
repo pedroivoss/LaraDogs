@@ -160,6 +160,64 @@ it('refuses to start a second audit while one is already Running for the same pr
     expect(Scan::query()->where('project_id', $project->id)->count())->toBe(1);
 });
 
+it('reclaims a stale Running scan (older than the configured threshold) as Failed and proceeds with a new audit, touching no Finding', function () {
+    config(['laradogs.projects.stale_scan_threshold_seconds' => 3600]);
+
+    $project = registerFixtureProject();
+
+    $staleScan = Scan::query()->create([
+        'project_id' => $project->id,
+        'status' => ScanStatus::Running,
+        'started_at' => now()->subSeconds(3700),
+        'project_profile' => ['project' => ['type' => 'laravel']],
+    ]);
+
+    $registry = new AnalyzerRegistry;
+    $registry->register(new AlwaysPassAnalyzer('composer-security'));
+    bindRegistry($registry);
+
+    $result = app(RunProjectAudit::class)->run($project);
+
+    expect($result->outcome)->toBe(RunProjectAuditOutcome::Completed)
+        ->and($result->succeeded())->toBeTrue();
+
+    $staleScan->refresh();
+    expect($staleScan->status)->toBe(ScanStatus::Failed)
+        ->and($staleScan->finished_at)->not->toBeNull();
+
+    // A new, distinct Scan was created for this audit; both rows persist.
+    expect(Scan::query()->where('project_id', $project->id)->count())->toBe(2)
+        ->and($result->scan->id)->not->toBe($staleScan->id);
+
+    // Reclaiming never touches Findings.
+    expect(Finding::query()->where('project_id', $project->id)->count())->toBe(0);
+});
+
+it('does NOT reclaim a Running scan that is still within the staleness threshold — AlreadyRunning still applies', function () {
+    config(['laradogs.projects.stale_scan_threshold_seconds' => 3600]);
+
+    $project = registerFixtureProject();
+
+    $recentScan = Scan::query()->create([
+        'project_id' => $project->id,
+        'status' => ScanStatus::Running,
+        'started_at' => now()->subSeconds(60),
+        'project_profile' => ['project' => ['type' => 'laravel']],
+    ]);
+
+    $registry = new AnalyzerRegistry;
+    $registry->register(new AlwaysPassAnalyzer('composer-security'));
+    bindRegistry($registry);
+
+    $result = app(RunProjectAudit::class)->run($project);
+
+    expect($result->outcome)->toBe(RunProjectAuditOutcome::AlreadyRunning);
+
+    $recentScan->refresh();
+    expect($recentScan->status)->toBe(ScanStatus::Running);
+    expect(Scan::query()->where('project_id', $project->id)->count())->toBe(1);
+});
+
 it('fails safely, with all prior history intact, when the registered project path has disappeared', function () {
     $filesystem = new Filesystem;
     $target = sys_get_temp_dir().'/laradogs-project-disappearing-'.uniqid();

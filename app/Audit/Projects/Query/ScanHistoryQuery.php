@@ -5,6 +5,7 @@ namespace App\Audit\Projects\Query;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
  * Scan history for one Project — recent scans (list) and one scan's full
@@ -30,6 +31,23 @@ final class ScanHistoryQuery
             ->orderByDesc('id')
             ->limit($limit)
             ->get();
+    }
+
+    /**
+     * Same data as {@see recentFor()}, server-side paginated — for a scan
+     * history BROWSER (e.g. the Dashboard). Reads the current page from
+     * the request's own `page` query parameter.
+     *
+     * @return LengthAwarePaginator<int, Scan>
+     */
+    public function paginateFor(Project $project, int $perPage = 20): LengthAwarePaginator
+    {
+        return Scan::query()
+            ->where('project_id', $project->id)
+            ->orderByDesc('started_at')
+            ->orderByDesc('id')
+            ->paginate($perPage)
+            ->withQueryString();
     }
 
     /**

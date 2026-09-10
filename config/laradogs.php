@@ -226,4 +226,36 @@ return [
         'settings_path' => env('LARADOGS_SEMGREP_SETTINGS_PATH', storage_path('app/laradogs/semgrep-settings.yml')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Persisted Projects (Phase 3.2 / Phase 7)
+    |--------------------------------------------------------------------------
+    |
+    | `stale_scan_threshold_seconds` — see
+    | App\Audit\Projects\StaleScanReclaimer. A `Scan` still `status=running`
+    | after this many seconds since `started_at` is treated as abandoned
+    | (the process that owned it crashed/was killed) rather than genuinely
+    | still executing, and is reclaimed (marked `failed`) the next time
+    | `RunProjectAudit::run()` is called for that project — closing the
+    | Phase 3.2 known limitation ("a crashed process can leave a Scan stuck
+    | Running indefinitely"). Never auto-resolves any Finding when
+    | reclaiming — only the stale Scan row's own status changes.
+    |
+    | Default (3600s = 1 hour) is deliberately generous headroom over the
+    | worst-case legitimate scan duration at CURRENT default timeouts: up
+    | to `semgrep.timeout_seconds` (1800s) + the generic process timeout
+    | for composer-audit/npm-audit (30s each, see `process.timeout_seconds`
+    | above) is genuinely possible for a real project the analyzers run
+    | sequentially against, i.e. ~31 minutes worst case — 3600s leaves
+    | comfortable margin without being so long that a genuinely stuck scan
+    | blocks new audits for that project for an unreasonable time. If you
+    | raise `LARADOGS_SEMGREP_TIMEOUT_SECONDS` significantly, raise this
+    | too.
+    |
+    */
+
+    'projects' => [
+        'stale_scan_threshold_seconds' => (int) env('LARADOGS_STALE_SCAN_THRESHOLD_SECONDS', 3600),
+    ],
+
 ];

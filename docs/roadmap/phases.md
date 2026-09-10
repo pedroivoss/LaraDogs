@@ -143,12 +143,29 @@ Heuristic detection: possible N+1, queries in loops, unbounded
 `Model::all()`, missing eager loading, sync-heavy operations that should
 be queued.
 
-## Phase 7 — Dashboard
+## Phase 7 — Dashboard ✅ Complete
 
-Findings list/detail pages, project/scan navigation, health overview.
-Builds on the Inertia/React foundation from Phase 0 but is not itself
-Phase 0 work — no dashboard-specific pages exist yet beyond the starter
-kit's own settings/auth pages.
+Findings list/detail pages, project/scan navigation. Builds on the
+Inertia/React foundation from Phase 0 but is not itself Phase 0 work.
+Delivered: an authenticated Projects list, Project Detail (summary,
+analyzer status, current findings, scan history), a server-side
+filtered/paginated Findings browser, Scan History/Detail (preserving each
+scan's own historical snapshot), and Finding Detail with lifecycle status
+actions routed through the existing `FindingLifecycleService` — all as a
+thin adapter over Phase 3.2's query layer, extended (never duplicated)
+only where genuinely needed (real pagination on two existing query
+methods; one new cross-project `DashboardSummaryQuery`). Two explicit
+design decisions were made and documented rather than guessed at:
+Dashboard-triggered audits remain CLI-only this phase (a synchronous
+HTTP-held-open scan would itself reproduce the stale-scan problem via
+browser/proxy timeouts; a queued job has no monitored worker process
+yet), and a `StaleScanReclaimer` was still built as prerequisite
+groundwork, genuinely closing Phase 3.2's "a crashed process can leave a
+Scan stuck Running" limitation for the CLI-triggered workflow already in
+use. **No health score, no charts/trend lines, no project-registration
+UI, no MCP, no Git integration, no quality gates** — see
+[`../dashboard.md`](../dashboard.md) for the full account, including
+known limitations.
 
 ## Phase 8 — History / Comparison / Quality Gates
 

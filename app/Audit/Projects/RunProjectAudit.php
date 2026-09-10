@@ -32,22 +32,27 @@ use App\Models\Audit\Scan;
  * bounded by the SAME database-level protection that already protects
  * concurrent Finding ingestion: `findings_project_fingerprint_unique`
  * (see {@see FindingIngestor}). A crashed/interrupted
- * process can also leave a Scan stuck in `Running` forever; there is no
- * staleness/timeout cleanup for that yet. Manually invoking an audit,
- * where a human can notice and intervene, is safe today — this MUST be
- * resolved before this class is ever driven by unattended automation (CI,
- * a scheduler/cron, a Git webhook, or any other unattended trigger) — see
- * docs/auditing/projects.md's Known limitations.
+ * process can also leave a Scan stuck in `Running` forever — closed by
+ * {@see StaleScanReclaimer} (Phase 7): a `Running` scan older than
+ * `config('laradogs.projects.stale_scan_threshold_seconds')` is treated
+ * as abandoned and reclaimed (marked `Failed`, no Finding touched) before
+ * the guard below runs, so a stuck scan no longer blocks this project
+ * forever. This closes the specific gap that made unattended (queued/
+ * scheduled) triggering unsafe — manually invoking an audit was already
+ * safe, since a human could notice and intervene.
  */
 final readonly class RunProjectAudit
 {
     public function __construct(
         private ProjectDiscovery $discovery,
         private ScanRunner $scanRunner,
+        private StaleScanReclaimer $staleScanReclaimer = new StaleScanReclaimer,
     ) {}
 
     public function run(Project $project): RunProjectAuditResult
     {
+        $this->staleScanReclaimer->reclaimIfStale($project);
+
         $runningScan = Scan::query()
             ->where('project_id', $project->id)
             ->where('status', ScanStatus::Running)

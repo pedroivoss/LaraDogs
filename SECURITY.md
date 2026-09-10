@@ -7,7 +7,7 @@ please report vulnerabilities responsibly.
 
 **Do not open a public GitHub issue for a security vulnerability.**
 
-Instead, email **pedroivosst@gmail.com** with:
+Instead, email **contact@ivocompany.com** with:
 
 - A description of the vulnerability and its potential impact.
 - Steps to reproduce (a minimal repro is very helpful).

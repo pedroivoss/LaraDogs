@@ -1,10 +1,13 @@
 # LaraDogs — "Personal" profile image.
 #
-# Single-container build meant for local/self-hosted quick start, running
-# SQLite. SQLite is this image's current implementation choice, not an
-# architectural requirement — see docs/architecture/decisions/ADR-0007
-# (MySQL/MariaDB/PostgreSQL are equally supported by LaraDogs, just not yet
-# wired into this image) and docs/development/docker.md.
+# Runtime ships both `pdo_sqlite` and `pdo_mysql` (Phase 7.1.1). The
+# docker-compose "Personal" profile pairs this image with a dedicated
+# MySQL service for realistic self-hosted UAT; SQLite remains fully
+# supported (e.g. outside Docker) — neither is an architectural
+# requirement, see docs/architecture/decisions/ADR-0007
+# (MySQL/MariaDB/PostgreSQL are equally supported by LaraDogs) and
+# docs/development/docker.md. `pdo_pgsql` is still not wired into this
+# image.
 # Not tuned for high-concurrency production traffic (see docs/development/docker.md
 # and the future "Server" profile in the roadmap).
 
@@ -92,13 +95,14 @@ FROM php:${PHP_VERSION}-cli-bookworm AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libsqlite3-0 \
         libsqlite3-dev \
+        default-libmysqlclient-dev \
         pkg-config \
         sqlite3 \
         curl \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && docker-php-ext-install -j"$(nproc)" pdo_sqlite \
-    && apt-get purge -y --auto-remove libsqlite3-dev pkg-config
+    && docker-php-ext-install -j"$(nproc)" pdo_sqlite pdo_mysql \
+    && apt-get purge -y --auto-remove libsqlite3-dev default-libmysqlclient-dev pkg-config
 
 # Node/npm for `npm audit` (Phase 4.2 — App\Audit\Analyzers\Npm\NpmAuditAnalyzer).
 # Installed directly here (not copied from `builder`, unlike Composer's

@@ -54,7 +54,7 @@ final class ProjectsController extends Controller
             'analyzer_executions' => $latestScan?->analyzerExecutions->map($this->executionToArray(...))->all() ?? [],
             'recent_scans' => $recentScans->map($this->scanToArray(...))->all(),
             'recent_findings' => $recentFindings->getCollection()->map($this->findingToArray(...))->all(),
-            'audit_command' => "php artisan laradogs:project:audit {$project->public_id}",
+            'audit_command' => "docker compose exec app php artisan laradogs:project:audit {$project->public_id}",
         ]);
     }
 

@@ -160,8 +160,24 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Public Registration (Phase 7.1.2)
+    |--------------------------------------------------------------------------
+    |
+    | Deliberately NOT in the list below. A self-hosted security/audit tool
+    | should not let anyone who can reach the HTTP port create an account —
+    | this is the proper Fortify mechanism to disable it: Fortify's own
+    | RoutesServiceProvider only registers GET/POST /register at all when
+    | Features::registration() is enabled, so both routes are genuinely
+    | absent (404), not merely hidden from the UI. The only way to create a
+    | user is `php artisan laradogs:user:create-admin` (first admin) or an
+    | authenticated admin's User Management screen (subsequent users) — see
+    | docs/self-hosting.md.
+    |
+    */
+
     'features' => [
-        Features::registration(),
         Features::resetPasswords(),
         Features::emailVerification(),
         Features::twoFactorAuthentication([

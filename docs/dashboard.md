@@ -208,17 +208,23 @@ triggering (CI, a scheduler, a Git webhook) is eventually built.
 
 ## Project registration UI decision
 
-**Not implemented this phase — CLI registration remains canonical.**
-Consistent with the audit-trigger decision above: registration accepts an
-arbitrary server-side filesystem path, and the existing CLI workflow
-(`laradogs:project:add`) already handles this safely (realpath validation,
-idempotent duplicate handling — see `docs/auditing/projects.md`). Adding
-a registration UI this phase would mean either building path-input UX
-that could mislead a user about what "the LaraDogs server's filesystem"
-means (especially confusing inside Docker — see below) or scope-creeping
-into a file browser, which the spec explicitly says not to build. The
-Dashboard's Projects page and empty states point at the exact CLI command
-instead.
+**Implemented in Phase 7.1.2, exactly the way this section originally
+anticipated it would need to be done safely.** Real UAT feedback showed
+CLI-only registration was too much friction for normal use, but the
+concern below was correct: a free-text path input would either mislead
+users about "the LaraDogs server's filesystem" or scope-creep into a file
+browser. The actual implementation avoids both — the Dashboard's "Add
+Project" page (admin-only, see `docs/self-hosting.md`'s authorization
+model) never accepts a typed path at all. It lists only the DIRECT child
+directories of a single configured root
+(`App\Audit\Projects\ProjectDirectoryDiscovery`, `config('laradogs.projects.root')`,
+`/projects` in the Docker profile) and the browser picks a directory NAME
+from that list; the backend resolves the name back to a realpath-
+contained absolute path (rejecting traversal and symlink escapes) before
+handing it to the same `RegisterProject` service the CLI already uses —
+no duplicated registration logic, no arbitrary filesystem access. CLI
+registration (`laradogs:project:add`) remains fully supported as a
+fallback — see `docs/self-hosting.md`.
 
 ## Docker path behavior
 
@@ -273,7 +279,11 @@ auto-mounts a host directory.
   [Audit trigger design](#audit-trigger-design-cli-only-this-phase). A
   future phase could revisit this once a documented, monitored queue
   worker process exists.
-- **No project registration UI** — CLI only.
+- **Project registration UI is admin-only** (Phase 7.1.2) — a deliberate
+  policy, since it grants access to server-mounted filesystem paths under
+  the configured project root; see `docs/self-hosting.md`'s authorization
+  model. CLI registration (`laradogs:project:add`) has no such
+  restriction.
 - **Stale-scan reclaim is age-based, not heartbeat-based** — a
   legitimately very slow scan past the threshold is misclassified as
   abandoned; no PID/heartbeat tracking exists to do better without new

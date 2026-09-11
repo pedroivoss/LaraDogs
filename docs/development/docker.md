@@ -1,12 +1,12 @@
 # Docker (Personal Profile)
 
-Phase 0 ships a single-container Docker setup for local/self-hosted use,
-running SQLite. The single-container shape is the "Personal" profile
-described in
-[ADR-0005](../architecture/decisions/ADR-0005-persistence-and-deployment-profiles.md).
-SQLite is this image's current **implementation** choice, not an
-architectural one — LaraDogs officially supports MySQL, MariaDB, and
-PostgreSQL too; see
+The "Personal" profile (single-node local/self-hosted use, described in
+[ADR-0005](../architecture/decisions/ADR-0005-persistence-and-deployment-profiles.md))
+runs two containers: the LaraDogs `app` and a dedicated, isolated MySQL
+`db` service (Phase 7.1.1). MySQL is this Compose profile's own choice for
+a realistic, self-contained UAT environment — not an architectural
+requirement. LaraDogs itself officially supports SQLite, MySQL, MariaDB,
+and PostgreSQL equally; see
 [ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md)
 and [Database support](#database-support) below. There is no "Server"
 profile (Redis, workers, scheduler, reverse proxy) yet — see the roadmap.
@@ -19,8 +19,18 @@ php artisan key:generate --show   # copy the output into APP_KEY in .env
 docker compose up --build
 ```
 
-Visit `http://localhost:8000` (override the host port with `APP_PORT` in
-`.env` if 8000 is taken).
+Visit `http://localhost:17347`. Both host ports are configurable in
+`.env` without touching source code:
+
+- `APP_PORT` (default `17347`) — the Dashboard's host port. The container
+  always listens on `:8000` internally regardless.
+- `APP_DATABASE_PORT` (default `17348`) — **optional** host publication of
+  the `db` container's MySQL, e.g. for a local GUI client. LaraDogs itself
+  never uses this port; it always connects over the Docker network via
+  `DB_HOST=db`/`DB_PORT=3306`, which never change.
+
+See [Troubleshooting](#troubleshooting) below if either default is
+already taken.
 
 Configuration — including `APP_KEY` — is supplied entirely via
 `docker-compose.yml`'s `env_file: .env`, i.e. real process environment
@@ -30,23 +40,86 @@ before starting; the entrypoint fails fast with a clear error if it isn't
 (a blank key would otherwise silently break session/cookie encryption).
 
 The container's entrypoint (`docker/entrypoint.sh`) is idempotent: on every
-start it creates `database/database.sqlite` if missing and runs `php
-artisan migrate --force`. It's safe to run repeatedly.
+start it runs `php artisan migrate --force` (and, only when
+`DB_CONNECTION=sqlite`, creates `database/database.sqlite` if missing).
+It's safe to run repeatedly. `app` waits for `db`'s healthcheck to pass
+before starting (`depends_on: condition: service_healthy`), so it never
+races MySQL initialization.
 
 ## Database support
 
-This image currently installs only the `pdo_sqlite`/`sqlite3` PHP
-extensions in the `runtime` stage, so it only runs SQLite out of the box.
-This is a **current implementation limitation of this Docker image**, not
-an architectural restriction — LaraDogs itself supports MySQL, MariaDB,
-and PostgreSQL equally (ADR-0007). Adding the `pdo_mysql`/`pdo_pgsql`
-extensions to the runtime stage is straightforward future work, not done
-in this pass to avoid unrelated Docker changes.
+The `runtime` stage installs both `pdo_sqlite`/`sqlite3` and `pdo_mysql`
+(Phase 7.1.1). The Docker Compose profile's own default is MySQL, via the
+dedicated `db` service below — isolated by its own network, named volume
+(`laradogs-mysql-data`), database, and credentials from **this** `.env`;
+it never connects to an already-running host/other-project MySQL. SQLite
+remains fully supported (see the commented block in `.env.example`) if you
+prefer the lighter single-database-file profile. `pdo_pgsql` is not
+installed in this image; using PostgreSQL means running LaraDogs outside
+Docker (see [`setup.md`](setup.md)) against an external instance.
 
-To use MySQL/MariaDB/PostgreSQL today, run LaraDogs outside this image
-(see [`setup.md`](setup.md)) with `DB_CONNECTION`/`DB_HOST`/`DB_DATABASE`/
-etc. pointed at an external database instance that has the matching PHP
-PDO extension available.
+### The `db` service
+
+- **Image**: `mysql:8.4` (pinned, never `latest`).
+- **Isolation**: its own Compose network (`laradogs`), its own named
+  volume (`laradogs-mysql-data`, never a host directory or a volume
+  shared with another project), its own database/user, all sourced from
+  this project's `.env` (`DB_DATABASE`/`DB_USERNAME`/`DB_PASSWORD`
+  become `MYSQL_DATABASE`/`MYSQL_USER`/`MYSQL_PASSWORD`).
+- **No root application account**: LaraDogs connects as the
+  `DB_USERNAME` user. `DB_ROOT_PASSWORD` (→ `MYSQL_ROOT_PASSWORD`) exists
+  only for the MySQL container's own first-boot initialization.
+- **Healthcheck**: `mysqladmin ping`, so `app` never races startup —
+  Compose's `condition: service_healthy` blocks `app` from starting
+  until `db` reports healthy.
+- **Host port** (`APP_DATABASE_PORT`, default `17348`) is optional and
+  separate from the internal `DB_PORT=3306` LaraDogs itself always uses
+  — see [Start](#start) above.
+
+## Project mount (auditing local projects)
+
+`docker-compose.yml` never hardcodes a personal path — the `app` service
+mounts `${LARADOGS_PROJECTS_PATH:-./projects}:/projects:ro`, a HOST env
+var (set in your own gitignored `.env`, defaulting to an empty
+`./projects` directory so a fresh checkout works with zero
+configuration), always **read-only** — see
+[`composer-audit.md`](../auditing/analyzers/composer-audit.md#docker-impact)
+for why analyzers never need write access to an audited project. Full
+guide (project-root security, the Dashboard's "Add Project" picker, the
+CLI fallback, first-administrator bootstrap, user management) in
+[`../self-hosting.md`](../self-hosting.md).
+
+## Troubleshooting
+
+**`Bind for 0.0.0.0:PORT failed: port is already allocated`** — another
+process (often another project's Docker Compose stack) already publishes
+that host port. Set a different value in `.env` (`APP_PORT=...` and/or
+`APP_DATABASE_PORT=...`) — no source change needed — then
+`docker compose up -d` again.
+
+**`app` stuck `Restarting (1)`** — inspect the real cause before changing
+anything:
+
+```bash
+docker compose logs app --tail=50
+```
+
+The most common cause is `DB_CONNECTION`/`DB_HOST`/`DB_PORT` in `.env` not
+matching a database the container can actually reach (e.g.
+`DB_CONNECTION=mysql` without `DB_HOST=db` — the entrypoint's
+`php artisan migrate --force` then fails, and `restart: unless-stopped`
+loops forever). Fix the `.env` values (see the MySQL block documented in
+`.env.example`) rather than changing the restart policy — that would hide
+the crash, not fix it.
+
+**Running `php artisan` directly on the host fails with `getaddrinfo for
+db failed`** — expected; `DB_HOST=db` only resolves inside the Compose
+network. Use `docker compose exec app php artisan ...` instead — see
+[`../self-hosting.md`](../self-hosting.md#canonical-docker-execution-model).
+
+**Project path not found / empty "Add Project" picker** — see
+[`../self-hosting.md`](../self-hosting.md#troubleshooting)'s project-mount
+troubleshooting.
 
 ## Stop
 
@@ -54,8 +127,12 @@ PDO extension available.
 docker compose down
 ```
 
-Data persists in two named Docker volumes (`laradogs-database`,
-`laradogs-storage`) across `up`/`down` cycles. To fully reset local data:
+Data persists in two named Docker volumes (`laradogs-storage`,
+`laradogs-mysql-data`) across `up`/`down` cycles — deliberately NOT a
+third volume over `/app/database` (see docker-compose.yml's own comment):
+that path also holds `database/migrations/`, application code that must
+always come from the built image, never be frozen at whatever a volume
+first saw. To fully reset local data (**destroys the database**):
 
 ```bash
 docker compose down -v
@@ -292,8 +369,8 @@ work, tracked in [`../roadmap/roadmap.md`](../roadmap/roadmap.md).
   image-slimming (multi-stage venv copy-out, Alpine-based runtime, etc.)
   was attempted under this phase's time pressure — see
   [Semgrep in the runtime image](#semgrep-in-the-runtime-image) above.
-- Only `pdo_sqlite`/`sqlite3` PHP extensions are installed — no
-  `pdo_mysql`/`pdo_pgsql` in this image (see
+- `pdo_sqlite`/`sqlite3` and `pdo_mysql` PHP extensions are installed —
+  no `pdo_pgsql` in this image yet (see
   [Database support](#database-support) above); a future scanner that
   itself needs a database driver would need the same kind of extension
   addition Composer just got here.

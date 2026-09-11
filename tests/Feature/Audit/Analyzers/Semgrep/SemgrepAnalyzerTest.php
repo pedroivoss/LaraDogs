@@ -458,3 +458,43 @@ it('never invents a category for a candidate — always resolved from SemgrepRul
 
     expect($candidates[0]->category->value)->toBe('security');
 });
+
+it('truncates the title for a rule message with no newline at all (a YAML folded ">-" scalar) rather than using the entire message', function () {
+    // Regression test (Phase 7.1.2 real UAT): laradogs.performance.eloquent.unbounded-all's
+    // message is authored as a YAML folded scalar, which joins every
+    // line with spaces into ONE line — `strtok($message, "\n")` then
+    // returns the WHOLE message as "the first line," producing a title
+    // long enough to overflow findings.title's varchar(255) column on
+    // MySQL with a hard SQLSTATE[22001] during a real audit run.
+    $context = semgrepFixtureProjectContext('ignore-bypass-project');
+    $longMessage = 'Model::all() loads every row of the table into memory at once, with '
+        .'no pagination or limit. This is a performance hotspot worth reviewing, not a '
+        .'confirmed bug: it may be entirely fine for a small, bounded table (e.g. a '
+        .'lookup/reference table), or a genuine problem for a table that grows with user activity.';
+    expect(strlen($longMessage))->toBeGreaterThan(250);
+
+    $json = json_encode([
+        'version' => '1.176.0',
+        'results' => [[
+            'check_id' => 'laradogs.performance.eloquent.unbounded-all',
+            'path' => $context->projectPath.'/app/Vulnerable.php',
+            'start' => ['line' => 7, 'col' => 5, 'offset' => 0],
+            'end' => ['line' => 7, 'col' => 18, 'offset' => 0],
+            'extra' => ['message' => $longMessage, 'severity' => 'INFO', 'metadata' => []],
+        ]],
+        'errors' => [],
+        'paths' => ['scanned' => [$context->projectPath.'/app/Vulnerable.php'], 'skipped' => []],
+    ]);
+
+    $runner = new FakeProcessRunner(semgrepVersionCheckResult(), semgrepScanResult($json));
+    $analyzer = makeSemgrepAnalyzer($runner);
+    $analyzer->availability($context);
+
+    $result = $analyzer->run($context);
+    $candidates = $analyzer->candidates($context, $result);
+
+    expect($candidates[0]->title)->not->toBe($longMessage)
+        ->and(strlen($candidates[0]->title))->toBeLessThan(160)
+        ->and($candidates[0]->title)->toEndWith('...')
+        ->and($candidates[0]->description)->toBe($longMessage);
+});

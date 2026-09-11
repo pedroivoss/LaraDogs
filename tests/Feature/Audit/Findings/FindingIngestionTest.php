@@ -221,3 +221,33 @@ it('relies on the database unique constraint, not application locking alone, as 
     expect(fn () => Finding::query()->create($attributes))->toThrow(QueryException::class);
     expect(Finding::query()->count())->toBe(1);
 });
+
+it('truncates an overly long candidate title before persisting, regardless of which analyzer produced it', function () {
+    // Regression test (Phase 7.1.2 real UAT): findings.title is
+    // `$table->string('title')` (varchar(255)) — a candidate title longer
+    // than that overflowed the column with a hard SQLSTATE[22001] on
+    // MySQL. FindingIngestor is the single choke point every analyzer's
+    // FindingCandidate passes through, so the bound is enforced here
+    // once, not duplicated per analyzer.
+    $project = makeIngestionProject();
+    $scan = makeIngestionScan($project);
+
+    $longTitle = str_repeat('a very long title fragment ', 20);
+    expect(strlen($longTitle))->toBeGreaterThan(255);
+
+    $candidate = new FindingCandidate(
+        ruleId: 'LARA-TEST-001',
+        analyzerId: 'synthetic',
+        category: AnalyzerCategory::Quality,
+        severity: Severity::Info,
+        confidence: Confidence::Low,
+        title: $longTitle,
+    );
+
+    makeIngestor()->ingest($project, $scan, $candidate);
+
+    $finding = Finding::query()->firstOrFail();
+    expect(strlen($finding->title))->toBeLessThan(255)
+        ->and($finding->title)->not->toBe($longTitle)
+        ->and($finding->title)->toEndWith('...');
+});

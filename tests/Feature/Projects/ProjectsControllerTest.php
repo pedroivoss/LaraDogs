@@ -94,7 +94,7 @@ class ProjectsControllerTest extends TestCase
             ->where('project.id', $project->public_id)
             ->has('summary')
             ->has('analyzer_executions', 1)
-            ->where('audit_command', "php artisan laradogs:project:audit {$project->public_id}")
+            ->where('audit_command', "docker compose exec app php artisan laradogs:project:audit {$project->public_id}")
         );
     }
 

@@ -13,6 +13,7 @@ use App\Models\Audit\FindingOccurrence;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Turns one {@see FindingCandidate} ("an analyzer observed this") into
@@ -25,6 +26,25 @@ use Illuminate\Support\Facades\DB;
  */
 final class FindingIngestor
 {
+    /**
+     * `findings.title` is `$table->string('title')` (MySQL `varchar(255)`)
+     * — a title is meant to be a short, single-line summary, not the full
+     * message. Enforced here, the single choke point every analyzer's
+     * {@see FindingCandidate} passes through before persistence, rather
+     * than duplicated per analyzer. Found via real UAT (Phase 7.1.2):
+     * `laradogs.performance.eloquent.unbounded-all`'s Semgrep rule message
+     * is authored as a YAML folded (`>-`) scalar, which joins every line
+     * with spaces into ONE line — defeating
+     * `SemgrepAnalyzer::titleFor()`'s "first line of the message" heuristic
+     * and producing a ~320-character "title" that overflowed the column
+     * with a hard `SQLSTATE[22001]` on MySQL (SQLite/PostgreSQL would have
+     * either silently truncated or also failed, depending on strict mode —
+     * this bound removes the ambiguity for every database backend alike).
+     * 250, not 255, to leave headroom under `Str::limit`'s own appended
+     * `...`.
+     */
+    private const int MAX_TITLE_LENGTH = 250;
+
     public function __construct(
         private readonly Fingerprinter $fingerprinter,
         private readonly EvidenceRedactor $redactor,
@@ -129,7 +149,7 @@ final class FindingIngestor
             'category' => $candidate->category,
             'severity' => $candidate->severity,
             'confidence' => $candidate->confidence,
-            'title' => $candidate->title,
+            'title' => Str::limit($candidate->title, self::MAX_TITLE_LENGTH),
             'description' => $candidate->description,
             'impact' => $candidate->impact,
             'recommendation' => $candidate->recommendation,

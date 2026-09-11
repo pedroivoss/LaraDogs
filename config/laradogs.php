@@ -256,6 +256,49 @@ return [
 
     'projects' => [
         'stale_scan_threshold_seconds' => (int) env('LARADOGS_STALE_SCAN_THRESHOLD_SECONDS', 3600),
+
+        /*
+        |----------------------------------------------------------------
+        | Project Root (Phase 7.1.2)
+        |----------------------------------------------------------------
+        |
+        | The single directory LaraDogs itself is allowed to look inside
+        | when the Dashboard's "Add Project" picker lists candidate
+        | directories or resolves one to register — see
+        | App\Audit\Projects\ProjectDirectoryDiscovery. This is an
+        | in-container path, always `/projects` in the documented Docker
+        | profile (see docker-compose.yml's
+        | `${LARADOGS_PROJECTS_PATH}:/projects:ro` bind mount — that HOST
+        | env var is unrelated to this one and never read by the
+        | application itself). Every candidate is realpath-resolved and
+        | must remain within this root (containment, not merely a
+        | string-prefix check) — the same defense ProjectFilesystem
+        | already uses, applied here to reject symlink escapes and path
+        | traversal before RegisterProject ever sees a path.
+        |
+        */
+        'root' => env('LARADOGS_PROJECT_ROOT', '/projects'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Administrator Bootstrap (Phase 7.1.2)
+    |--------------------------------------------------------------------------
+    |
+    | Read ONLY by `php artisan laradogs:user:create-admin`, never by any
+    | HTTP-reachable code path. Optional — the command prompts interactively
+    | (with hidden password input) for whichever of these is not set, so
+    | this is purely a convenience for scripted/non-interactive first-boot
+    | automation, never a shipped default credential (see that command's
+    | own docblock and docs/self-hosting.md's security principle: LaraDogs
+    | never auto-creates a known admin/password).
+    |
+    */
+
+    'admin_bootstrap' => [
+        'name' => env('LARADOGS_ADMIN_NAME'),
+        'email' => env('LARADOGS_ADMIN_EMAIL'),
+        'password' => env('LARADOGS_ADMIN_PASSWORD'),
     ],
 
 ];

@@ -18,9 +18,11 @@ use App\Audit\Engine\Process\ProcessCommand;
 use App\Audit\Engine\Process\ProcessRunner;
 use App\Audit\Findings\Confidence;
 use App\Audit\Findings\FindingCandidate;
+use App\Audit\Findings\Ingestion\FindingIngestor;
 use App\Audit\Findings\Ingestion\ProducesFindingCandidates;
 use App\Audit\Findings\Redaction\EvidenceRedactor;
 use App\Audit\Findings\Severity;
+use Illuminate\Support\Str;
 
 /**
  * The third real analyzer, and the first Static Application Security
@@ -482,11 +484,23 @@ final class SemgrepAnalyzer implements Analyzer, ProducesFindingCandidates
         };
     }
 
+    /**
+     * A rule's `message` is written for readability in YAML, not as a
+     * pre-split (title, detail) pair — some are multi-line (first line
+     * genuinely short), but a YAML folded (`>-`) scalar joins every line
+     * with spaces into ONE line, so "first line" alone is not a reliable
+     * length bound (confirmed against a real rule during Phase 7.1.2 UAT:
+     * a ~320-character single "line" that overflowed `findings.title`'s
+     * column before {@see FindingIngestor}
+     * gained its own hard cap). `Str::limit` here keeps titles genuinely
+     * short/scannable in the UI on top of that hard DB-level cap, not
+     * instead of it.
+     */
     private function titleFor(string $ruleId, string $message): string
     {
         $firstLine = trim((string) strtok($message, "\n"));
 
-        return $firstLine !== '' ? $firstLine : sprintf('Semgrep rule %s matched.', $ruleId);
+        return $firstLine !== '' ? Str::limit($firstLine, 150) : sprintf('Semgrep rule %s matched.', $ruleId);
     }
 
     /**

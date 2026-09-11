@@ -1,10 +1,12 @@
 # LaraDogs — "Personal" profile.
 #
-# Minimal single-container setup for local/self-hosted use, running SQLite.
-# SQLite is this image's current implementation choice, not an
-# architectural requirement — LaraDogs also officially supports MySQL,
-# MariaDB, and PostgreSQL (see docs/architecture/decisions/ADR-0007), just
-# not yet wired into this Docker image (docs/development/docker.md).
+# Two-container local/self-hosted setup: the app plus a dedicated, isolated
+# MySQL instance (own network, own named volume, own credentials — never an
+# already-running host/other-project MySQL). LaraDogs also officially
+# supports SQLite, MariaDB, and PostgreSQL (see
+# docs/architecture/decisions/ADR-0007-database-agnostic-persistence.md);
+# MySQL is simply this Compose profile's own choice for a realistic,
+# self-contained UAT environment.
 # The future "Server" profile (Redis, queue workers, scheduler, reverse
 # proxy) is tracked in docs/roadmap/roadmap.md and is intentionally not
 # built here — see ADR-0005.
@@ -12,6 +14,42 @@
 # First run:
 #   cp .env.example .env
 #   docker compose up --build
+#
+# Host ports (both configurable, both distinctive/non-standard to avoid
+# colliding with other local dev stacks):
+#   APP_PORT          (default 17347) -> app container's 8000
+#   APP_DATABASE_PORT (default 17348) -> db container's 3306, OPTIONAL
+#                      host publication for local debugging (e.g. a GUI
+#                      MySQL client) — LaraDogs itself never uses this
+#                      port; it talks to MySQL over the Docker network via
+#                      DB_HOST=db / DB_PORT=3306 (see .env.example).
+#
+# Project root: LARADOGS_PROJECTS_PATH (a HOST path, in .env — never
+# committed) is bind-mounted read-only at the container's fixed /projects.
+# Defaults to ./projects (relative to this file, auto-created empty by
+# Docker if missing) so a fresh checkout works with zero configuration;
+# point it at a real directory of Laravel projects to audit them via the
+# Dashboard's "Add Project" or `laradogs:project:add /projects/<name>` —
+# see docs/self-hosting.md.
+#
+# `docker compose down` preserves both named volumes (storage, MySQL
+# data). `docker compose down -v` destroys them — see
+# docs/development/docker.md.
+#
+# No volume is mounted over /app/database (Phase 7.1.2 fix — real bug,
+# found and root-caused via actual validation, not theoretical): that
+# path also holds database/migrations/, application CODE that must
+# always come from the built image. A volume mounted there permanently
+# freezes it at whatever the FIRST `docker compose up` saw — verified
+# live: a migration added after the volume already existed silently
+# never ran on any later `up`/rebuild, even though the file was present
+# in the image, because the volume's stale snapshot shadowed it. The
+# MySQL profile above needs no persistence under /app/database at all
+# (data lives in laradogs-mysql-data instead); the SQLite fallback (see
+# .env.example) only means database.sqlite itself doesn't survive
+# `docker compose down` — acceptable for that secondary profile, and
+# `docker compose restart`/normal `up`/`down` cycles during a single
+# session are unaffected either way.
 
 services:
     app:
@@ -21,12 +59,45 @@ services:
         env_file:
             - .env
         ports:
-            - '${APP_PORT:-8000}:8000'
+            - '${APP_PORT:-17347}:8000'
         volumes:
-            - laradogs-database:/app/database
             - laradogs-storage:/app/storage
+            - ${LARADOGS_PROJECTS_PATH:-./projects}:/projects:ro
+        depends_on:
+            db:
+                condition: service_healthy
+        networks:
+            - laradogs
         restart: unless-stopped
 
+    db:
+        image: mysql:8.4
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE:-laradogs}
+            MYSQL_USER: ${DB_USERNAME:-laradogs}
+            MYSQL_PASSWORD: ${DB_PASSWORD:-laradogs}
+            MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-laradogs}
+        ports:
+            - '${APP_DATABASE_PORT:-17348}:3306'
+        volumes:
+            - laradogs-mysql-data:/var/lib/mysql
+        healthcheck:
+            test:
+                [
+                    'CMD-SHELL',
+                    'mysqladmin ping -h 127.0.0.1 -u root -p"$$MYSQL_ROOT_PASSWORD" --silent',
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 10
+            start_period: 30s
+        networks:
+            - laradogs
+        restart: unless-stopped
+
+networks:
+    laradogs:
+
 volumes:
-    laradogs-database:
     laradogs-storage:
+    laradogs-mysql-data:

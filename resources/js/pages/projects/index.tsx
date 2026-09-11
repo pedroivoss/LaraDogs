@@ -1,6 +1,7 @@
-import { Head, Link } from '@inertiajs/react';
-import { FolderOpen } from 'lucide-react';
+import { Head, Link, usePage } from '@inertiajs/react';
+import { FolderOpen, Plus } from 'lucide-react';
 import { EmptyState } from '@/components/audit/empty-state';
+import { Button } from '@/components/ui/button';
 import {
     Table,
     TableBody,
@@ -10,7 +11,11 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { dashboard } from '@/routes';
-import { index as projectsIndex, show as projectShow } from '@/routes/projects';
+import {
+    add as projectAdd,
+    index as projectsIndex,
+    show as projectShow,
+} from '@/routes/projects';
 
 type ProjectListItem = {
     id: string;
@@ -25,21 +30,38 @@ export default function ProjectsIndex({
 }: {
     projects: ProjectListItem[];
 }) {
+    const { auth } = usePage().props;
+    const isAdmin = auth.user?.is_admin ?? false;
+
     return (
         <>
             <Head title="Projects" />
             <div className="flex flex-1 flex-col gap-4 p-4">
-                <h1 className="text-xl font-semibold">Projects</h1>
+                <div className="flex items-center justify-between">
+                    <h1 className="text-xl font-semibold">Projects</h1>
+                    {isAdmin && (
+                        <Button asChild size="sm">
+                            <Link href={projectAdd()}>
+                                <Plus className="size-4" />
+                                Add Project
+                            </Link>
+                        </Button>
+                    )}
+                </div>
 
                 {projects.length === 0 ? (
                     <EmptyState
                         icon={FolderOpen}
                         title="No projects registered yet"
-                        description="Register a Laravel project with LaraDogs to start tracking its audit history. This is currently a CLI-only workflow."
+                        description={
+                            isAdmin
+                                ? 'Add a project from a directory mounted under /projects, or register one from the command line.'
+                                : 'No projects have been registered yet. An administrator can add one.'
+                        }
                         action={
                             <code className="bg-muted rounded-md px-3 py-1.5 text-xs">
-                                php artisan laradogs:project:add
-                                /path/to/your/laravel/project
+                                docker compose exec app php artisan
+                                laradogs:project:add /projects/your-project
                             </code>
                         }
                     />

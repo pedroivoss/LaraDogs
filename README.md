@@ -56,8 +56,7 @@ GitHub Actions) that detects, organizes, tracks, and explains:
    integration on top, primarily through MCP. See
    [ADR-0002](docs/architecture/decisions/ADR-0002-application-architecture.md).
 2. **Don't reinvent scanners.** LaraDogs orchestrates mature tools
-   (PHPStan/Larastan, ESLint, Semgrep, OSV-Scanner, Trivy, `composer
-audit`, `npm audit`, Pest/PHPUnit, and more over time) rather than
+   (PHPStan/Larastan, ESLint, Semgrep, OSV-Scanner, Trivy, `composer audit`, `npm audit`, Pest/PHPUnit, and more over time) rather than
    reimplementing static analysis engines. The value is in detection,
    normalization, correlation, deduplication, Laravel-aware rules, and
    history. See [ADR-0004](docs/architecture/decisions/ADR-0004-scanner-execution-strategy.md).
@@ -277,9 +276,10 @@ This is entirely separate from the database used by a project LaraDogs
 audits: the Audit Core never assumes a target project's database vendor
 matches LaraDogs' own.
 
-The current Docker quick-start image only ships the SQLite PHP extension;
-using MySQL/MariaDB/PostgreSQL today means running outside that image (see
-[`docs/development/docker.md`](docs/development/docker.md)).
+The Docker quick-start ships both SQLite and MySQL PHP extensions — its
+`docker-compose.yml` pairs the app with a dedicated, isolated MySQL
+service by default. Using MariaDB/PostgreSQL today means running outside
+that image (see [`docs/development/docker.md`](docs/development/docker.md)).
 
 ## Quick start
 
@@ -303,17 +303,28 @@ Visit `http://localhost:8000`. See
 [`docs/development/setup.md`](docs/development/setup.md) for day-to-day
 commands (`composer run dev`, test/lint gates).
 
-### With Docker
+### With Docker (self-hosted)
 
 ```bash
 git clone <this-repo> laradogs && cd laradogs
 cp .env.example .env
 php artisan key:generate --show   # copy the output into APP_KEY in .env
-docker compose up --build
+docker compose up -d --build
+docker compose exec app php artisan laradogs:user:create-admin
 ```
 
-See [`docs/development/docker.md`](docs/development/docker.md) for what
-the image does and current limitations.
+Visit `http://localhost:17347` and log in with the administrator you just
+created — public self-registration is disabled by design. From there:
+**Projects → Add Project** to register a project mounted under
+`LARADOGS_PROJECTS_PATH` (see `.env.example`), then
+`docker compose exec app php artisan laradogs:project:audit <PUBLIC_ID>`
+to audit it (Dashboard-triggered audits are intentionally CLI-only for
+now). Every LaraDogs command runs through the container
+(`docker compose exec app php artisan ...`), never directly on the host —
+see [`docs/self-hosting.md`](docs/self-hosting.md) for the full guide
+(project mounting, user/admin management, ports, troubleshooting) and
+[`docs/development/docker.md`](docs/development/docker.md) for what the
+image itself does.
 
 ## Try LaraDogs
 
@@ -397,8 +408,7 @@ scan is ~200x faster but was verified, live, to let the target's own
 for the full investigation). `timeout_seconds` (the whole-scan timeout)
 now defaults to **1800 seconds (30 minutes)**, calibrated from this real
 measurement rather than picked arbitrarily. An even larger project may
-need it raised further: `LARADOGS_SEMGREP_TIMEOUT_SECONDS=2400 php artisan
-laradogs:audit /path/to/project`.
+need it raised further: `LARADOGS_SEMGREP_TIMEOUT_SECONDS=2400 php artisan laradogs:audit /path/to/project`.
 
 For the full guide — Docker usage, interpreting output, known
 limitations, how to report a false positive, and the guarantee that your

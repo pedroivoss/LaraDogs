@@ -1,40 +1,101 @@
-import { Form, Head } from '@inertiajs/react';
+import { Form, Head, router } from '@inertiajs/react';
 import UsersController from '@/actions/App/Http/Controllers/Settings/UsersController';
-import { Badge } from '@/components/ui/badge';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { edit, index } from '@/routes/settings/users';
+import {
+    activate,
+    deactivate,
+    demote,
+    edit,
+    index,
+    promote,
+} from '@/routes/settings/users';
+import type { Role } from '@/types';
 
 type TargetUser = {
     id: number;
     name: string;
     email: string;
-    is_admin: boolean;
+    role: Role;
+    is_active: boolean;
 };
 
 export default function EditUser({
     target_user: targetUser,
+    can_change_role: canChangeRole,
 }: {
     target_user: TargetUser;
+    can_change_role: boolean;
 }) {
+    function toggleActive() {
+        const action = targetUser.is_active ? deactivate : activate;
+        const verb = targetUser.is_active ? 'deactivate' : 'activate';
+
+        router.put(
+            action(targetUser.id),
+            {},
+            {
+                onBefore: () =>
+                    confirm(
+                        `${verb.charAt(0).toUpperCase() + verb.slice(1)} ${targetUser.name}?`,
+                    ),
+            },
+        );
+    }
+
+    function changeRole() {
+        const action = targetUser.role === 'admin' ? demote : promote;
+        const verb = targetUser.role === 'admin' ? 'demote' : 'promote';
+
+        router.put(
+            action(targetUser.id),
+            {},
+            {
+                onBefore: () =>
+                    confirm(
+                        `${verb.charAt(0).toUpperCase() + verb.slice(1)} ${targetUser.name}${verb === 'promote' ? ' to Admin' : ' to User'}?`,
+                    ),
+            },
+        );
+    }
+
     return (
         <>
             <Head title={`Edit ${targetUser.name}`} />
 
             <div className="space-y-10">
                 <div className="space-y-6">
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                         <Heading
                             variant="small"
                             title={targetUser.name}
                             description={targetUser.email}
                         />
-                        {targetUser.is_admin && <Badge>Administrator</Badge>}
+                        {targetUser.role === 'admin' && <Badge>Admin</Badge>}
+                        {targetUser.is_active ? (
+                            <Badge variant="outline">Active</Badge>
+                        ) : (
+                            <Badge variant="destructive">Inactive</Badge>
+                        )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={toggleActive}>
+                            {targetUser.is_active ? 'Deactivate' : 'Activate'}
+                        </Button>
+                        {canChangeRole && (
+                            <Button variant="outline" onClick={changeRole}>
+                                {targetUser.role === 'admin'
+                                    ? 'Demote to User'
+                                    : 'Promote to Admin'}
+                            </Button>
+                        )}
                     </div>
 
                     <Form

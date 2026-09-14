@@ -6,6 +6,74 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 7.1.3: Instance Owner & Access Control Hardening
+
+Replaces the Phase 7.1.2 `users.is_admin` boolean with a three-tier
+Owner/Admin/User authorization model — see
+[`docs/self-hosting.md`](docs/self-hosting.md)'s authorization section.
+
+### Added
+
+- **`users.role`** (portable string column: `owner`/`admin`/`user`, see
+  `App\Models\Role`), replacing `is_admin`. **`users.is_active`**
+  (default `true`) — deactivation revokes access without deleting the
+  account or its historical finding-lifecycle references (`Finding`
+  actor identity is a plain string snapshot, never a foreign key, so it
+  was never at risk).
+- **`App\Policies\UserPolicy`** — the single centralized authorization
+  layer for Settings → Users (view/manage/create/createAdmin/activate/
+  deactivate/promote/demote), so controllers stay thin.
+- **Instance Owner**: exactly one per installation, enforced at the
+  application layer. `laradogs:user:create-owner` (fresh install,
+  interactive hidden-password prompt or `LARADOGS_ADMIN_*` env for
+  automation — no default credential, ever) and
+  `laradogs:user:claim-owner {email}` (promotes an existing account —
+  the deterministic path for an installation upgrading from Phase 7.1.2
+  with more than one prior admin; see the migration's own docblock for
+  why that case never auto-selects one).
+- **Owner privacy**: the Owner is excluded server-side from every
+  Settings → Users response for a non-Owner actor — never merely hidden
+  in the UI. An Admin's own listing additionally excludes other Admins.
+  Any request naming the Owner's id 404s, identical to a nonexistent id.
+- Admin/User account management: Owner may create/manage Admins and
+  Users, promote/demote between Admin and User; Admin may create/manage
+  Users only. Activate/deactivate revokes access without deleting the
+  account.
+- `App\Http\Middleware\EnsureUserIsActive` (global) + a custom
+  `Fortify::authenticateUsing()` callback — an inactive account can
+  neither log in nor keep an already-authenticated session past the next
+  request; both fail with the exact same generic message Fortify already
+  uses for a wrong password, so an inactive account is never
+  distinguishable from a nonexistent/wrong-password one.
+- `App\Http\Middleware\EnsureUserIsStaff` (renamed from
+  `EnsureUserIsAdmin`) — gates project registration and Settings → Users
+  to Owner/Admin.
+- Landing/login pages: "administrator" terminology replaced with
+  "Instance Owner"; the not-yet-configured state now shows the exact
+  `laradogs:user:create-owner` command.
+
+### Changed
+
+- `laradogs:user:create-admin` now requires an Owner to already exist
+  (fails cleanly otherwise, pointing at `create-owner`) — a deliberate,
+  documented semantics change from Phase 7.1.2, where it created the
+  first privileged account at all.
+- Project registration authorization unchanged in effect (Owner+Admin
+  allowed, User forbidden) but now expressed via the renamed
+  `EnsureUserIsStaff` middleware rather than an admin-only check.
+
+### Fixed
+
+- Two real bugs found during this phase's own implementation/testing
+  (not the Phase 7.1.2 finding-title bug — see that phase's own
+  changelog note elsewhere): `UsersController`'s
+  activate/deactivate/promote/demote actions and
+  `ClaimOwnerCommand` originally used `$user->update([...])` on `role`/
+  `is_active`, both deliberately excluded from `User`'s `#[Fillable]`
+  list — silently no-ops instead of raising an error. Fixed to direct
+  property assignment (`$user->role = ...; $user->save();`), the same
+  pattern already used correctly elsewhere in this codebase.
+
 ## [Unreleased] — Phase 7: Dashboard
 
 The canonical, official roadmap Phase 7 — see

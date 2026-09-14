@@ -214,8 +214,8 @@ CLI-only registration was too much friction for normal use, but the
 concern below was correct: a free-text path input would either mislead
 users about "the LaraDogs server's filesystem" or scope-creep into a file
 browser. The actual implementation avoids both — the Dashboard's "Add
-Project" page (admin-only, see `docs/self-hosting.md`'s authorization
-model) never accepts a typed path at all. It lists only the DIRECT child
+Project" page (Owner/Admin-only, see `docs/self-hosting.md`'s
+authorization model) never accepts a typed path at all. It lists only the DIRECT child
 directories of a single configured root
 (`App\Audit\Projects\ProjectDirectoryDiscovery`, `config('laradogs.projects.root')`,
 `/projects` in the Docker profile) and the browser picks a directory NAME
@@ -279,11 +279,11 @@ auto-mounts a host directory.
   [Audit trigger design](#audit-trigger-design-cli-only-this-phase). A
   future phase could revisit this once a documented, monitored queue
   worker process exists.
-- **Project registration UI is admin-only** (Phase 7.1.2) — a deliberate
-  policy, since it grants access to server-mounted filesystem paths under
-  the configured project root; see `docs/self-hosting.md`'s authorization
-  model. CLI registration (`laradogs:project:add`) has no such
-  restriction.
+- **Project registration UI is Owner/Admin-only** (Phase 7.1.2, roles
+  refined in 7.1.3) — a deliberate policy, since it grants access to
+  server-mounted filesystem paths under the configured project root; see
+  `docs/self-hosting.md`'s authorization model. CLI registration
+  (`laradogs:project:add`) has no such restriction.
 - **Stale-scan reclaim is age-based, not heartbeat-based** — a
   legitimately very slow scan past the threshold is misclassified as
   abandoned; no PID/heartbeat tracking exists to do better without new

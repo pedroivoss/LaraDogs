@@ -52,9 +52,9 @@ const CAPABILITIES = [
 ] as const;
 
 export default function Welcome({
-    has_administrator: hasAdministrator,
+    has_owner: hasOwner,
 }: {
-    has_administrator: boolean;
+    has_owner: boolean;
 }) {
     const { auth } = usePage().props;
 
@@ -116,22 +116,23 @@ export default function Welcome({
                         ))}
                     </div>
 
-                    {!auth.user && !hasAdministrator && (
+                    {!auth.user && !hasOwner && (
                         <Card className="max-w-2xl">
-                            <CardContent className="flex items-start gap-3 pt-6">
-                                <LayoutGrid
-                                    className="text-muted-foreground mt-0.5 size-5 shrink-0"
-                                    aria-hidden
-                                />
-                                <p className="text-muted-foreground text-sm">
-                                    An administrator account has not been
-                                    configured yet. See{' '}
-                                    <code className="bg-muted rounded px-1 py-0.5 text-xs">
-                                        docs/self-hosting.md
-                                    </code>{' '}
-                                    for how to provision the first
-                                    administrator.
-                                </p>
+                            <CardContent className="flex flex-col gap-3 pt-6">
+                                <div className="flex items-start gap-3">
+                                    <LayoutGrid
+                                        className="text-muted-foreground mt-0.5 size-5 shrink-0"
+                                        aria-hidden
+                                    />
+                                    <p className="text-muted-foreground text-sm">
+                                        An Instance Owner has not been
+                                        configured yet. Run:
+                                    </p>
+                                </div>
+                                <code className="bg-muted block rounded-md px-3 py-1.5 text-xs">
+                                    docker compose exec app php artisan
+                                    laradogs:user:create-owner
+                                </code>
                             </CardContent>
                         </Card>
                     )}

@@ -310,10 +310,10 @@ git clone <this-repo> laradogs && cd laradogs
 cp .env.example .env
 php artisan key:generate --show   # copy the output into APP_KEY in .env
 docker compose up -d --build
-docker compose exec app php artisan laradogs:user:create-admin
+docker compose exec app php artisan laradogs:user:create-owner
 ```
 
-Visit `http://localhost:17347` and log in with the administrator you just
+Visit `http://localhost:17347` and log in with the credentials you just
 created — public self-registration is disabled by design. From there:
 **Projects → Add Project** to register a project mounted under
 `LARADOGS_PROJECTS_PATH` (see `.env.example`), then

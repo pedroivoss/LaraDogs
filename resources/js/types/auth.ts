@@ -1,10 +1,13 @@
+export type Role = 'owner' | 'admin' | 'user';
+
 export type User = {
     id: number;
     name: string;
     email: string;
     avatar?: string;
     email_verified_at: string | null;
-    is_admin: boolean;
+    role: Role;
+    is_active: boolean;
     two_factor_enabled?: boolean;
     created_at: string;
     updated_at: string;

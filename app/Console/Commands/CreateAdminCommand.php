@@ -2,81 +2,57 @@
 
 namespace App\Console\Commands;
 
-use App\Concerns\PasswordValidationRules;
-use App\Concerns\ProfileValidationRules;
+use App\Console\Commands\Concerns\ProvisionsUserAccounts;
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Console\Command;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
 
 /**
- * Provisions LaraDogs' first administrator. Deliberately the ONLY way to
- * create the first account — see docs/self-hosting.md's security
- * principle: LaraDogs never ships/auto-creates a known default credential
- * (`admin`/`admin`, `admin@laradogs.test`/`password`, or similar). The
- * operator supplies real values, interactively (hidden password input) or
- * non-interactively via `LARADOGS_ADMIN_NAME`/`LARADOGS_ADMIN_EMAIL`/
- * `LARADOGS_ADMIN_PASSWORD` (e.g. for scripted first-boot automation) —
- * either way, nothing is ever printed back except a success/failure
- * message, never the password.
+ * Provisions an Admin account (Phase 7.1.3 semantics — see this class's
+ * own history: Phase 7.1.2 originally used this command to create the
+ * FIRST privileged account at all; now that Owner exists, that job
+ * belongs to `laradogs:user:create-owner` instead, and this command
+ * REQUIRES an Owner to already exist before it will do anything).
  *
- * Idempotent: running it again with an email that already exists fails
- * cleanly (no duplicate, no silent password overwrite of an existing
- * account — use the admin User Management screen to reset another user's
- * password instead).
+ * This is a deliberate, documented semantics change, not a silent one:
+ * running this command on an installation with no Owner yet fails
+ * cleanly with a message pointing at `create-owner`, rather than
+ * creating an ambiguously-privileged account or silently becoming a
+ * second bootstrap path. An Owner can equally create an Admin from the
+ * Dashboard's Settings → Users — this command exists for CLI-only/
+ * scripted provisioning, not because the Dashboard can't do it.
  */
 final class CreateAdminCommand extends Command
 {
-    use PasswordValidationRules, ProfileValidationRules;
+    use ProvisionsUserAccounts;
 
     protected $signature = 'laradogs:user:create-admin
         {--name= : Administrator display name (prompted if omitted)}
         {--email= : Administrator email (prompted if omitted)}';
 
-    protected $description = 'Provision the first LaraDogs administrator account';
+    protected $description = 'Provision an Admin account (requires an Instance Owner to already exist)';
 
     public function handle(): int
     {
-        $name = $this->option('name') ?? config('laradogs.admin_bootstrap.name') ?? $this->ask('Administrator name');
-        $email = $this->option('email') ?? config('laradogs.admin_bootstrap.email') ?? $this->ask('Administrator email');
-        $bootstrapPassword = config('laradogs.admin_bootstrap.password');
-        $password = $bootstrapPassword ?? $this->secret('Administrator password');
-        $confirmation = $bootstrapPassword ?? $this->secret('Confirm password');
-
-        $validator = Validator::make(
-            [
-                'name' => $name,
-                'email' => $email,
-                'password' => $password,
-                'password_confirmation' => $confirmation,
-            ],
-            [
-                ...$this->profileRules(),
-                'password' => $this->passwordRules(),
-            ],
-        );
-
-        if ($validator->fails()) {
-            foreach ($validator->errors()->all() as $message) {
-                $this->components->error($message);
-            }
+        if (! User::query()->where('role', Role::Owner)->exists()) {
+            $this->components->error('No Instance Owner exists yet. Run `laradogs:user:create-owner` first — the Owner can then create Admin accounts, from this command or the Dashboard\'s Settings → Users.');
 
             return self::FAILURE;
         }
 
-        $validated = $validator->validated();
+        $validated = $this->promptAndValidateNewUser(
+            $this->option('name') ?? config('laradogs.admin_bootstrap.name'),
+            $this->option('email') ?? config('laradogs.admin_bootstrap.email'),
+            config('laradogs.admin_bootstrap.password'),
+        );
 
-        $user = new User([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-        ]);
-        $user->password = Hash::make($validated['password']);
-        $user->is_admin = true;
-        $user->email_verified_at = Carbon::now();
-        $user->save();
+        if ($validated === null) {
+            return self::FAILURE;
+        }
 
-        $this->components->info("Administrator account created: {$user->email}");
+        $user = $this->createUserWithRole($validated, Role::Admin);
+
+        $this->components->info("Admin account created: {$user->email}");
 
         return self::SUCCESS;
     }

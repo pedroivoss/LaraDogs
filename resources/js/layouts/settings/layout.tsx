@@ -33,9 +33,13 @@ export default function SettingsLayout({ children }: PropsWithChildren) {
     const { isCurrentOrParentUrl } = useCurrentUrl();
     const { auth } = usePage().props;
 
-    const sidebarNavItems: NavItem[] = auth.user?.is_admin
-        ? [...baseNavItems, { title: 'Users', href: usersIndex(), icon: null }]
-        : baseNavItems;
+    const sidebarNavItems: NavItem[] =
+        auth.user?.role === 'owner' || auth.user?.role === 'admin'
+            ? [
+                  ...baseNavItems,
+                  { title: 'Users', href: usersIndex(), icon: null },
+              ]
+            : baseNavItems;
 
     return (
         <div className="px-4 py-6">

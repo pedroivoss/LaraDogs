@@ -16,10 +16,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('projects', [ProjectsController::class, 'index'])->name('projects.index');
 
-    // Admin-only: project registration exposes server-mounted filesystem
-    // paths (see docs/self-hosting.md's authorization model), so it's
-    // gated separately from the read-only Dashboard views above.
-    Route::middleware('admin')->group(function () {
+    // Owner/Admin-only: project registration exposes server-mounted
+    // filesystem paths (see docs/self-hosting.md's authorization model),
+    // so it's gated separately from the read-only Dashboard views above.
+    Route::middleware('staff')->group(function () {
         Route::get('projects/add', [ProjectRegistrationController::class, 'create'])->name('projects.add');
         Route::post('projects', [ProjectRegistrationController::class, 'store'])->name('projects.store');
     });

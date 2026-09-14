@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -29,6 +30,8 @@ class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
+            'role' => Role::User,
+            'is_active' => true,
             'remember_token' => Str::random(10),
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
@@ -47,12 +50,36 @@ class UserFactory extends Factory
     }
 
     /**
-     * Indicate that the user is an administrator.
+     * Indicate that the user is the Instance Owner. Test-only — never
+     * use two of these in the same test without deactivating/changing
+     * the first; the single-Owner invariant is an application-layer
+     * rule (App\Policies\UserPolicy), not a database constraint, so the
+     * factory itself does not stop you from creating two by mistake.
+     */
+    public function owner(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => Role::Owner,
+        ]);
+    }
+
+    /**
+     * Indicate that the user is an Admin.
      */
     public function admin(): static
     {
         return $this->state(fn (array $attributes) => [
-            'is_admin' => true,
+            'role' => Role::Admin,
+        ]);
+    }
+
+    /**
+     * Indicate that the account is deactivated.
+     */
+    public function inactive(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_active' => false,
         ]);
     }
 

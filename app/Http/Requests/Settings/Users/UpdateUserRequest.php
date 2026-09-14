@@ -9,11 +9,14 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateUserRequest extends FormRequest
 {
-    use ProfileValidationRules;
+    use DeniesWithNotFound, ProfileValidationRules;
 
     public function authorize(): bool
     {
-        return (bool) $this->user()?->is_admin;
+        /** @var User|null $target */
+        $target = $this->route('user');
+
+        return $target !== null && (bool) $this->user()?->can('manage', $target);
     }
 
     /**

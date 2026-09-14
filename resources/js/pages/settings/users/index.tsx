@@ -13,12 +13,14 @@ import {
     TableRow,
 } from '@/components/ui/table';
 import { create, edit, index } from '@/routes/settings/users';
+import type { Role } from '@/types';
 
 type UserListItem = {
     id: number;
     name: string;
     email: string;
-    is_admin: boolean;
+    role: Role;
+    is_active: boolean;
     created_at: string;
 };
 
@@ -56,6 +58,7 @@ export default function UsersIndex({ users }: { users: UserListItem[] }) {
                                     <TableHead>Name</TableHead>
                                     <TableHead>Email</TableHead>
                                     <TableHead>Role</TableHead>
+                                    <TableHead>Status</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -73,11 +76,22 @@ export default function UsersIndex({ users }: { users: UserListItem[] }) {
                                             {user.email}
                                         </TableCell>
                                         <TableCell>
-                                            {user.is_admin ? (
-                                                <Badge>Administrator</Badge>
+                                            {user.role === 'admin' ? (
+                                                <Badge>Admin</Badge>
                                             ) : (
                                                 <Badge variant="outline">
                                                     User
+                                                </Badge>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {user.is_active ? (
+                                                <Badge variant="outline">
+                                                    Active
+                                                </Badge>
+                                            ) : (
+                                                <Badge variant="destructive">
+                                                    Inactive
                                                 </Badge>
                                             )}
                                         </TableCell>

@@ -1,4 +1,4 @@
-# Self-Hosting LaraDogs (Phase 7.1.1 / 7.1.2)
+# Self-Hosting LaraDogs (Phase 7.1.1 / 7.1.2 / 7.1.3)
 
 This is the complete guide to running LaraDogs as a real, self-hosted
 Docker deployment: the environment, the project-mount model, the
@@ -18,13 +18,13 @@ php artisan key:generate --show   # copy the output into APP_KEY in .env
 # Laravel projects (defaults to ./projects, empty, zero-config).
 
 docker compose up -d --build
-docker compose exec app php artisan laradogs:user:create-admin
+docker compose exec app php artisan laradogs:user:create-owner
 ```
 
 Then:
 
 1. Open `http://localhost:17347`.
-2. Log in with the administrator you just created.
+2. Log in with the credentials you just created.
 3. Go to **Projects → Add Project**, pick a directory, register it.
 4. Copy its public ID from the Project Detail page.
 5. Run `docker compose exec app php artisan laradogs:project:audit <PUBLIC_ID>`.
@@ -130,65 +130,144 @@ and `tests/Feature/Projects/ProjectRegistrationControllerTest.php`.
 
 ## Authorization model
 
-LaraDogs has two roles, via a single `users.is_admin` boolean — no
-RBAC package, no teams/organizations:
+LaraDogs has three roles, via a single `users.role` column (`owner` /
+`admin` / `user` — a portable string, never a database-vendor `ENUM`
+type; see `App\Models\Role`) — no RBAC package, no teams/organizations:
 
-|                         | Guest | User | Administrator |
-| ----------------------- | ----- | ---- | ------------- |
-| Dashboard               | no    | yes  | yes           |
-| Register/audit projects | no    | no   | yes           |
-| User management         | no    | no   | yes           |
-| Own profile/password    | —     | yes  | yes           |
+| Capability                 | Owner | Admin | User |
+| -------------------------- | ----- | ----- | ---- |
+| Dashboard / view projects  | yes   | yes   | yes  |
+| Register project           | yes   | yes   | no   |
+| Create/manage normal Users | yes   | yes   | no   |
+| Manage Admins              | yes   | no    | no   |
+| Create Admin               | yes   | no    | no   |
+| Promote/demote             | yes   | no    | no   |
+| Manage Owner               | self  | no    | no   |
+| Deactivate Owner           | no    | no    | no   |
+| Own profile/password       | yes   | yes   | yes  |
 
-**Project registration is admin-only.** It grants access to
+**Project registration is Owner/Admin-only.** It grants access to
 server-mounted filesystem paths under `/projects`, which this V1
-self-hosted model treats as an administrative capability, not a general
-user one. (Running an already-registered project's audit is currently
-CLI-only regardless of role — see
+self-hosted model treats as a staff capability, not a general user one.
+(Running an already-registered project's audit is currently CLI-only
+regardless of role — see
 [`dashboard.md`](dashboard.md#audit-trigger-design-cli-only-this-phase) —
 so this restriction is specifically about the registration step.)
 
-`is_admin` is set once, at account creation, and is **immutable from the
-UI this phase** (no promote/demote, no activate/deactivate) — a
-deliberate, smaller-and-safer scope than half-implementing role changes
-with "last admin" lockout protection this phase doesn't need yet. The
-first administrator is always created by `laradogs:user:create-admin`;
-every user an administrator creates afterward is always a regular user.
+**The Owner is never a management target** — not by an Admin, not even
+by themselves. The Owner's own profile/password go through the same
+Settings → Profile/Security pages every role uses; Settings → Users
+simply excludes the Owner from every response for a non-Owner actor
+(server-side, not merely hidden in the UI — see
+[Owner privacy](#owner-privacy) below), so there is nothing there to
+even attempt to manage. Exactly **one** active Owner exists at a time,
+enforced at the application layer (`App\Policies\UserPolicy` — see that
+class's own docblock) rather than a database constraint, since the only
+two code paths that can ever assign the Owner role
+(`laradogs:user:create-owner`, `laradogs:user:claim-owner`) both refuse
+outright if one already exists and are CLI-only, never reachable over
+HTTP.
 
-## Initial administrator
+## Owner privacy
 
-There is no default administrator account, ever — LaraDogs never ships
-or auto-creates a known credential (no `admin`/`admin`, no
-`admin@laradogs.test`/`password`). The first account is always
+An Admin's Settings → Users never contains the Owner, and never contains
+other Admin accounts either (Admin manages Users only) — the query
+itself excludes them (`UsersController::index()`), so there is no row to
+hide client-side. Requesting the Owner's (or another Admin's, as an
+Admin) edit/update/password/activate endpoint directly by id behaves
+identically to requesting an id that doesn't exist: `404`, matching this
+app's existing IDOR-guard convention elsewhere (never `403`, which would
+at least confirm the id exists). See
+`tests/Feature/Settings/UsersControllerTest.php`'s privacy-focused tests
+for the full list of endpoints this covers.
+
+## Instance Owner bootstrap
+
+There is no default Owner account, ever — LaraDogs never ships or
+auto-creates a known credential (no `admin`/`admin`, no
+`owner@laradogs.test`/`password`). The first account is always
 provisioned explicitly:
 
 ```bash
-docker compose exec app php artisan laradogs:user:create-admin
+docker compose exec app php artisan laradogs:user:create-owner
 ```
 
-Prompts for name, email, and password (hidden input). Until this has
-been run once, the login page shows a generic "An administrator account
-has not been configured yet" message — never environment/configuration
-details.
+Prompts for name, email, and password (hidden input). Refuses outright
+if an Owner already exists. Until this has been run once, the landing
+and login pages show a generic "An Instance Owner has not been
+configured yet" message (plus, on the landing page only, the exact
+command above) — never environment/configuration details.
 
 For scripted/non-interactive first-boot automation only, the command
 also accepts `LARADOGS_ADMIN_NAME`/`LARADOGS_ADMIN_EMAIL`/
 `LARADOGS_ADMIN_PASSWORD` from the environment (see `.env.example`) — if
-unset, the default, it always prompts interactively instead. Running the
-command again with an email that already exists fails cleanly (no
-duplicate, no silent overwrite).
+unset, the default, it always prompts interactively instead. The
+variable names keep their Phase 7.1.2 `ADMIN` naming (an existing `.env`
+value keeps working); what they bootstrap is now the Owner.
+
+### `laradogs:user:create-admin`
+
+Provisions an **Admin** account, and now **requires an Owner to already
+exist** — a deliberate, documented semantics change from Phase 7.1.2
+(where this command created the very first privileged account). Running
+it before an Owner exists fails cleanly with a message pointing at
+`create-owner`. An Owner can equally create an Admin from the
+Dashboard's Settings → Users; this command exists for CLI-only/scripted
+provisioning.
+
+### `laradogs:user:claim-owner {email}`
+
+Promotes an **existing** account to Owner — never creates a new one.
+Exists for exactly one scenario: upgrading from a Phase 7.1.2
+installation that had more than one admin account (see
+[Upgrading](#upgrading-from-phase-712-isadmin) below). Also refuses if
+an Owner already exists.
 
 ## User management
 
-An administrator manages other accounts under **Settings → Users**
-(only visible to administrators):
+An Owner or Admin manages other accounts under **Settings → Users**:
 
-- list users;
-- create a user (name, email, password);
+- list users (Owner sees Admins + Users; Admin sees Users only — see
+  [Owner privacy](#owner-privacy));
+- create a user — Owner may choose Admin or User as the new account's
+  role; Admin's choice is always forced to User server-side regardless
+  of what the form submits;
 - edit a user's name/email;
 - set a user's password directly (no "current password" needed — the
-  admin never sees or needs the existing one; it stays hashed and
-  unreadable either way).
+  actor never sees or needs the existing one; it stays hashed and
+  unreadable either way);
+- activate/deactivate — revokes/restores access without deleting the
+  account or its history; never on yourself, never on the Owner;
+- promote (User → Admin) / demote (Admin → User) — **Owner only**. An
+  Admin cannot change anyone's role, including their own.
+
+## Upgrading from Phase 7.1.2 (`is_admin`)
+
+The upgrade migration
+(`2026_09_11_000001_replace_is_admin_with_role_on_users_table`) runs
+automatically on the next container start, like every other migration —
+no manual step needed. It's deterministic and requires no interactive
+input:
+
+- every `is_admin = false` account → `role = user`;
+- **exactly one** `is_admin = true` account → `role = owner` (safe:
+  there's no other candidate to confuse it with);
+- **more than one** `is_admin = true` account → `role = admin` for ALL
+  of them, deliberately **not** auto-selecting one as Owner. Silently
+  picking one by row order could hand Owner-only capabilities to
+  whichever account happened to be created first, not necessarily who
+  the operator would choose.
+
+If your installation lands in that last case (check with **Settings →
+Users** — an Owner-less installation won't show one there because Owner
+doesn't exist yet), run once:
+
+```bash
+docker compose exec app php artisan laradogs:user:claim-owner your-email@example.com
+```
+
+No installation loses administrative access on upgrade: every prior
+admin becomes at least Admin, never silently demoted to User.
 
 ## Personal account settings
 
@@ -242,7 +321,7 @@ docker compose exec app php artisan laradogs:project:audit <PUBLIC_ID>
 ## Persistence
 
 ```bash
-docker compose down       # preserves all 3 named volumes (database/storage/MySQL)
+docker compose down       # preserves both named volumes (storage/MySQL)
 docker compose down -v    # DESTROYS them — only for a full local reset
 ```
 
@@ -278,13 +357,40 @@ host path.
 and points at a real directory containing project subdirectories, then
 `docker compose down && docker compose up -d`.
 
+## Known limitations
+
+- **Ownership transfer is deferred.** There is no UI/command to move
+  Owner from one account to another once assigned (only the two
+  bootstrap-time paths above ever assign it, and both refuse once an
+  Owner exists). If this is ever needed, it's future work.
+- No delete action exists for any account (Owner, Admin, or User) —
+  deactivation is the only access-revocation mechanism this phase
+  ships, deliberately (see [User management](#user-management) above).
+
 ## Security summary
 
-- No hardcoded/default administrator credential, ever.
+- No hardcoded/default Owner/Admin credential, ever.
 - Public self-registration disabled at the route level (`404`, not hidden UI).
 - Passwords always hashed (`bcrypt`, Laravel's `hashed` cast) — never
   displayed, never retrievable, only settable.
-- Project registration is admin-only.
+- Project registration is Owner/Admin-only.
+- The Owner is invisible to Admin/User through every Settings → Users
+  response (server-side query exclusion, not UI hiding) and unreachable
+  through any of its endpoints (`404`, matching this app's IDOR-guard
+  convention).
+- `role`/`is_active` are excluded from `User`'s mass-assignable
+  (`#[Fillable]`) attributes — a request body can never smuggle a role/
+  activation change through an unrelated form; every legitimate change
+  goes through `App\Policies\UserPolicy`-gated code that sets them via
+  direct, explicit property assignment.
+- Deactivated accounts can neither log in nor keep an already-
+  authenticated session past the next request
+  (`App\Http\Middleware\EnsureUserIsActive`) — indistinguishable from a
+  wrong password to an unauthenticated caller.
+- Deactivating/removing access from an account never destroys its
+  historical finding-lifecycle references — `actor_identifier` is
+  always a plain string snapshot (the email at transition time), never
+  a foreign key to `users`.
 - Filesystem access is scoped to `/projects` and its direct children,
   read-only, with realpath containment against traversal and symlink
   escapes.

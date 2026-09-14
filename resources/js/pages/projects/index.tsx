@@ -31,7 +31,8 @@ export default function ProjectsIndex({
     projects: ProjectListItem[];
 }) {
     const { auth } = usePage().props;
-    const isAdmin = auth.user?.is_admin ?? false;
+    const canRegisterProjects =
+        auth.user?.role === 'owner' || auth.user?.role === 'admin';
 
     return (
         <>
@@ -39,7 +40,7 @@ export default function ProjectsIndex({
             <div className="flex flex-1 flex-col gap-4 p-4">
                 <div className="flex items-center justify-between">
                     <h1 className="text-xl font-semibold">Projects</h1>
-                    {isAdmin && (
+                    {canRegisterProjects && (
                         <Button asChild size="sm">
                             <Link href={projectAdd()}>
                                 <Plus className="size-4" />
@@ -54,9 +55,9 @@ export default function ProjectsIndex({
                         icon={FolderOpen}
                         title="No projects registered yet"
                         description={
-                            isAdmin
+                            canRegisterProjects
                                 ? 'Add a project from a directory mounted under /projects, or register one from the command line.'
-                                : 'No projects have been registered yet. An administrator can add one.'
+                                : 'No projects have been registered yet. An Owner or Admin can add one.'
                         }
                         action={
                             <code className="bg-muted rounded-md px-3 py-1.5 text-xs">

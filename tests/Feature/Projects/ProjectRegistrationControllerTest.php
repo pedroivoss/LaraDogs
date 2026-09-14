@@ -44,6 +44,16 @@ class ProjectRegistrationControllerTest extends TestCase
         $this->actingAs($user)->post('/projects', ['directory' => 'Sample'])->assertNotFound();
     }
 
+    public function test_owner_can_also_register_a_project(): void
+    {
+        $owner = User::factory()->owner()->create();
+
+        $response = $this->actingAs($owner)->post('/projects', ['directory' => 'Sample']);
+
+        $project = Project::query()->firstOrFail();
+        $response->assertRedirect("/projects/{$project->public_id}");
+    }
+
     public function test_admin_sees_available_directories(): void
     {
         $admin = User::factory()->admin()->create();

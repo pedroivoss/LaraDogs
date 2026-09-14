@@ -4,6 +4,7 @@ namespace App\Http\Requests\Settings\Users;
 
 use App\Concerns\PasswordValidationRules;
 use App\Http\Requests\Settings\PasswordUpdateRequest;
+use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -16,11 +17,14 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class SetUserPasswordRequest extends FormRequest
 {
-    use PasswordValidationRules;
+    use DeniesWithNotFound, PasswordValidationRules;
 
     public function authorize(): bool
     {
-        return (bool) $this->user()?->is_admin;
+        /** @var User|null $target */
+        $target = $this->route('user');
+
+        return $target !== null && (bool) $this->user()?->can('manage', $target);
     }
 
     /**

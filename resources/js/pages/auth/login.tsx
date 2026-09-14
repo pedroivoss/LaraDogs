@@ -14,24 +14,20 @@ import PasskeyVerify from '@/components/passkey-verify';
 type Props = {
     status?: string;
     canResetPassword: boolean;
-    hasAdministrator: boolean;
+    hasOwner: boolean;
 };
 
-export default function Login({
-    status,
-    canResetPassword,
-    hasAdministrator,
-}: Props) {
+export default function Login({ status, canResetPassword, hasOwner }: Props) {
     return (
         <>
             <Head title="Log in" />
 
             <PasskeyVerify />
 
-            {!hasAdministrator && (
+            {!hasOwner && (
                 <div className="bg-muted text-muted-foreground mb-4 rounded-md p-3 text-center text-sm">
-                    An administrator account has not been configured yet. See
-                    the self-hosting documentation for how to provision one.
+                    An Instance Owner has not been configured yet. See the
+                    self-hosting documentation for how to provision one.
                 </div>
             )}
 

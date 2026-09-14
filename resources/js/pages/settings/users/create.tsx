@@ -1,4 +1,5 @@
 import { Form, Head } from '@inertiajs/react';
+import { useState } from 'react';
 import UsersController from '@/actions/App/Http/Controllers/Settings/UsersController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -6,10 +7,23 @@ import PasswordInput from '@/components/password-input';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { create, index } from '@/routes/settings/users';
 
-export default function CreateUser() {
+export default function CreateUser({
+    can_create_admin: canCreateAdmin,
+}: {
+    can_create_admin: boolean;
+}) {
+    const [role, setRole] = useState<'user' | 'admin'>('user');
+
     return (
         <>
             <Head title="New user" />
@@ -52,6 +66,32 @@ export default function CreateUser() {
                                 />
                                 <InputError message={errors.email} />
                             </div>
+
+                            {canCreateAdmin && (
+                                <div className="grid gap-2">
+                                    <Label htmlFor="role">Role</Label>
+                                    <Select
+                                        value={role}
+                                        onValueChange={(value) =>
+                                            setRole(value as 'user' | 'admin')
+                                        }
+                                    >
+                                        <SelectTrigger id="role">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="user">
+                                                User
+                                            </SelectItem>
+                                            <SelectItem value="admin">
+                                                Admin
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <InputError message={errors.role} />
+                                </div>
+                            )}
+                            <input type="hidden" name="role" value={role} />
 
                             <div className="grid gap-2">
                                 <Label htmlFor="password">Password</Label>

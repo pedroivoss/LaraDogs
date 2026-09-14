@@ -282,16 +282,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Administrator Bootstrap (Phase 7.1.2)
+    | Account Bootstrap (Phase 7.1.2, extended in Phase 7.1.3)
     |--------------------------------------------------------------------------
     |
-    | Read ONLY by `php artisan laradogs:user:create-admin`, never by any
-    | HTTP-reachable code path. Optional — the command prompts interactively
-    | (with hidden password input) for whichever of these is not set, so
-    | this is purely a convenience for scripted/non-interactive first-boot
-    | automation, never a shipped default credential (see that command's
-    | own docblock and docs/self-hosting.md's security principle: LaraDogs
-    | never auto-creates a known admin/password).
+    | Read ONLY by `php artisan laradogs:user:create-owner` (the primary
+    | consumer as of Phase 7.1.3) and `laradogs:user:create-admin`, never
+    | by any HTTP-reachable code path. Optional — both commands prompt
+    | interactively (with hidden password input) for whichever of these
+    | is not set, so this is purely a convenience for scripted/
+    | non-interactive first-boot automation, never a shipped default
+    | credential (see those commands' own docblocks and
+    | docs/self-hosting.md's security principle: LaraDogs never
+    | auto-creates a known account/password). Key names kept as
+    | `LARADOGS_ADMIN_*`/`admin_bootstrap` from Phase 7.1.2 rather than
+    | renamed to `owner`/`LARADOGS_OWNER_*` — an operator's existing
+    | `.env` value keeps working unchanged, and the setting's real
+    | meaning ("the account this CLI bootstrap creates") hasn't changed,
+    | only which role it's now most commonly used for.
     |
     */
 

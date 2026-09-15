@@ -21,6 +21,7 @@ use App\Models\Audit\Finding;
 use App\Models\Audit\FindingOccurrence;
 use App\Models\Audit\FindingStatusHistory;
 use App\Models\Audit\Project;
+use App\Models\Audit\ProjectActiveScan;
 use App\Models\Audit\Scan;
 use App\Models\Audit\ScanAnalyzerExecution;
 use Illuminate\Filesystem\Filesystem;
@@ -139,12 +140,17 @@ it('preserves scan history across multiple audits of the same project — nothin
 it('refuses to start a second audit while one is already Running for the same project', function () {
     $project = registerFixtureProject();
 
-    Scan::query()->create([
+    $runningScan = Scan::query()->create([
         'project_id' => $project->id,
         'status' => ScanStatus::Running,
         'started_at' => now(),
         'project_profile' => ['project' => ['type' => 'laravel']],
     ]);
+    // The portable mutex row (Phase 7.1.4) — every real Running scan
+    // always has one (created atomically by
+    // ScanRecorder::enqueueScan()); a raw fixture like this must mirror
+    // that invariant for the concurrency guard to see it as active.
+    ProjectActiveScan::query()->create(['project_id' => $project->id, 'scan_id' => $runningScan->id]);
 
     $registry = new AnalyzerRegistry;
     $registry->register(new AlwaysPassAnalyzer('composer-security'));
@@ -204,6 +210,11 @@ it('does NOT reclaim a Running scan that is still within the staleness threshold
         'started_at' => now()->subSeconds(60),
         'project_profile' => ['project' => ['type' => 'laravel']],
     ]);
+    // The portable mutex row (Phase 7.1.4) — every real Running scan
+    // always has one (created atomically by
+    // ScanRecorder::enqueueScan()); a raw fixture like this must mirror
+    // that invariant for the concurrency guard to see it as active.
+    ProjectActiveScan::query()->create(['project_id' => $project->id, 'scan_id' => $recentScan->id]);
 
     $registry = new AnalyzerRegistry;
     $registry->register(new AlwaysPassAnalyzer('composer-security'));
@@ -215,6 +226,64 @@ it('does NOT reclaim a Running scan that is still within the staleness threshold
 
     $recentScan->refresh();
     expect($recentScan->status)->toBe(ScanStatus::Running);
+    expect(Scan::query()->where('project_id', $project->id)->count())->toBe(1);
+});
+
+it('reclaims a stale Queued scan (never picked up by a worker) as Failed and proceeds with a new audit', function () {
+    config(['laradogs.projects.queued_scan_stale_threshold_seconds' => 120]);
+
+    $project = registerFixtureProject();
+
+    $staleQueuedScan = Scan::query()->create([
+        'project_id' => $project->id,
+        'status' => ScanStatus::Queued,
+        'origin' => 'cli',
+        'started_at' => now()->subSeconds(300),
+        'project_profile' => [],
+    ]);
+    ProjectActiveScan::query()->create(['project_id' => $project->id, 'scan_id' => $staleQueuedScan->id]);
+
+    $registry = new AnalyzerRegistry;
+    $registry->register(new AlwaysPassAnalyzer('composer-security'));
+    bindRegistry($registry);
+
+    $result = app(RunProjectAudit::class)->run($project);
+
+    expect($result->outcome)->toBe(RunProjectAuditOutcome::Completed)
+        ->and($result->succeeded())->toBeTrue();
+
+    $staleQueuedScan->refresh();
+    expect($staleQueuedScan->status)->toBe(ScanStatus::Failed)
+        ->and($staleQueuedScan->finished_at)->not->toBeNull();
+
+    expect(Scan::query()->where('project_id', $project->id)->count())->toBe(2)
+        ->and($result->scan->id)->not->toBe($staleQueuedScan->id);
+});
+
+it('does NOT reclaim a Queued scan that is still within its (short, separate) staleness threshold', function () {
+    config(['laradogs.projects.queued_scan_stale_threshold_seconds' => 120]);
+
+    $project = registerFixtureProject();
+
+    $recentQueuedScan = Scan::query()->create([
+        'project_id' => $project->id,
+        'status' => ScanStatus::Queued,
+        'origin' => 'cli',
+        'started_at' => now()->subSeconds(10),
+        'project_profile' => [],
+    ]);
+    ProjectActiveScan::query()->create(['project_id' => $project->id, 'scan_id' => $recentQueuedScan->id]);
+
+    $registry = new AnalyzerRegistry;
+    $registry->register(new AlwaysPassAnalyzer('composer-security'));
+    bindRegistry($registry);
+
+    $result = app(RunProjectAudit::class)->run($project);
+
+    expect($result->outcome)->toBe(RunProjectAuditOutcome::AlreadyRunning);
+
+    $recentQueuedScan->refresh();
+    expect($recentQueuedScan->status)->toBe(ScanStatus::Queued);
     expect(Scan::query()->where('project_id', $project->id)->count())->toBe(1);
 });
 
@@ -244,9 +313,15 @@ it('fails safely, with all prior history intact, when the registered project pat
         ->and($second->succeeded())->toBeFalse()
         ->and($second->scan)->toBeNull();
 
-    // The first scan's history is untouched.
-    expect(Scan::query()->where('project_id', $project->id)->count())->toBe(1);
-    expect(Scan::query()->where('project_id', $project->id)->first()->status)->toBe(ScanStatus::Completed);
+    // Phase 7.1.4: enqueue() always reserves a real Scan row before
+    // discovery even runs (so the Dashboard can show "Queued"
+    // immediately) — a path that disappears between dispatch and
+    // execution therefore marks THAT reserved scan Failed rather than
+    // producing no row at all (see RunProjectAuditOutcome::PathUnavailable's
+    // own docblock). History is still intact: the first scan is untouched.
+    expect(Scan::query()->where('project_id', $project->id)->count())->toBe(2);
+    expect(Scan::query()->where('project_id', $project->id)->orderBy('id')->pluck('status'))
+        ->toEqual(collect([ScanStatus::Completed, ScanStatus::Failed]));
 });
 
 it('records an analyzer timeout as a scan-level execution without failing the whole scan', function () {

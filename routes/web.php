@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FindingsController;
+use App\Http\Controllers\Projects\ProjectAuditController;
+use App\Http\Controllers\Projects\ProjectAuditScheduleController;
 use App\Http\Controllers\Projects\ProjectFindingsController;
 use App\Http\Controllers\Projects\ProjectRegistrationController;
 use App\Http\Controllers\Projects\ProjectScansController;
@@ -28,6 +30,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('projects/{project:public_id}/findings', [ProjectFindingsController::class, 'index'])->name('projects.findings');
     Route::get('projects/{project:public_id}/scans', [ProjectScansController::class, 'index'])->name('projects.scans');
     Route::get('projects/{project:public_id}/scans/{scan:public_id}', [ProjectScansController::class, 'show'])->name('projects.scans.show');
+
+    // Owner/Admin-only: an audit consumes server CPU/network (Phase
+    // 7.1.4) — the same administrative-capability reasoning as project
+    // registration above.
+    Route::middleware('staff')->group(function () {
+        Route::post('projects/{project:public_id}/audits', [ProjectAuditController::class, 'store'])
+            ->middleware('throttle:6,1')
+            ->name('projects.audits.store');
+        Route::put('projects/{project:public_id}/audit-schedule', [ProjectAuditScheduleController::class, 'update'])
+            ->name('projects.audit-schedule.update');
+    });
 
     Route::get('findings/{finding:public_id}', [FindingsController::class, 'show'])->name('findings.show');
     Route::patch('findings/{finding:public_id}/status', [FindingsController::class, 'updateStatus'])->name('findings.status');

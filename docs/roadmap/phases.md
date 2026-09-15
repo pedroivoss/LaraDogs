@@ -167,6 +167,26 @@ UI, no MCP, no Git integration, no quality gates** — see
 [`../dashboard.md`](../dashboard.md) for the full account, including
 known limitations.
 
+### Phase 7.1 — Self-Hosting & Authorization Hardening ✅ Complete
+
+Sub-phases addressing real self-hosted-use gaps identified after Phase 7
+shipped, each documented in full under `../self-hosting.md`,
+`../dashboard.md`, and `../auditing/`:
+
+- **7.1.1** — Docker Compose profile (`app` + `db`), non-root runtime
+  image, MySQL support alongside SQLite.
+- **7.1.2** — Dashboard project-registration UI (the "Add Project"
+  picker), first-Admin bootstrap, user management basics.
+- **7.1.3** — Owner/Admin/User roles (replacing a plain `is_admin` flag),
+  Owner privacy (invisible to Admin/User Settings → Users and its
+  endpoints), single-Owner invariant.
+- **7.1.4** — Asynchronous audit execution: a Dashboard "Run Audit"
+  button + queue worker (`database` queue, no Redis), optional per-project
+  scheduling (Disabled/Daily/Weekly/Monthly), a real portable concurrency
+  mutex (`project_active_scans`), heartbeat-aware stale-scan recovery, and
+  two new Docker services (`worker`, `scheduler`). See
+  [`../auditing/audit-execution.md`](../auditing/audit-execution.md).
+
 ## Phase 8 — History / Comparison / Quality Gates
 
 NEW/RESOLVED/UNCHANGED/REGRESSED comparison between scans; quality gates

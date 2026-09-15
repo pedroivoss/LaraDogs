@@ -212,9 +212,11 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   Detail with lifecycle status actions (open/confirmed/resolved/
   accepted-risk/false-positive/ignored, reason-enforced server-side) —
   built entirely on the query layer above, no second audit engine.
-  Registering a project and triggering a NEW audit remain CLI-only this
-  phase — see [`docs/dashboard.md`](docs/dashboard.md) for why, and its
-  own known limitations.
+  Registering a project (Owner/Admin) and triggering/scheduling an audit
+  (Owner/Admin — Phase 7.1.4) both happen from the Dashboard; the CLI
+  remains fully supported for both, for scripted/debugging use. See
+  [`docs/dashboard.md`](docs/dashboard.md) and
+  [`docs/auditing/audit-execution.md`](docs/auditing/audit-execution.md).
 - A Laravel 13 application with React + Inertia (official starter kit)
   and Fortify-based authentication (Phase 0), now serving the real
   Dashboard above (Phase 7) instead of the starter kit's original
@@ -247,11 +249,9 @@ the Semgrep foundation):
   comparison **report** (the underlying regression/reopen lifecycle
   exists; a NEW/RESOLVED/UNCHANGED/REGRESSED report view doesn't), quality
   gates.
-- Dashboard-triggered audits and project registration (both remain
-  CLI-only — see [`docs/dashboard.md`](docs/dashboard.md)), a
-  rules/reports/quality-gates/integrations/MCP-access/system/updates area
-  of the Dashboard, the MCP server, MCP credentials, Git/CI continuous
-  monitoring.
+- A rules/reports/quality-gates/integrations/MCP-access/system/updates
+  area of the Dashboard, the MCP server, MCP credentials, Git/CI
+  continuous monitoring, push notifications on scan completion.
 
 **Planned:** see [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md) for
 the full phase list.
@@ -316,13 +316,17 @@ docker compose exec app php artisan laradogs:user:create-owner
 Visit `http://localhost:17347` and log in with the credentials you just
 created — public self-registration is disabled by design. From there:
 **Projects → Add Project** to register a project mounted under
-`LARADOGS_PROJECTS_PATH` (see `.env.example`), then
-`docker compose exec app php artisan laradogs:project:audit <PUBLIC_ID>`
-to audit it (Dashboard-triggered audits are intentionally CLI-only for
-now). Every LaraDogs command runs through the container
-(`docker compose exec app php artisan ...`), never directly on the host —
-see [`docs/self-hosting.md`](docs/self-hosting.md) for the full guide
-(project mounting, user/admin management, ports, troubleshooting) and
+`LARADOGS_PROJECTS_PATH` (see `.env.example`), then click **Run Audit** —
+no terminal needed. The command above brings up all four Docker services
+(`app`, `db`, and — Phase 7.1.4 — `worker`/`scheduler`, which execute
+queued and scheduled audits); every LaraDogs command still runs through
+the container (`docker compose exec app php artisan ...`), never directly
+on the host, and the CLI audit command remains available for debugging:
+`docker compose exec app php artisan laradogs:project:audit <PUBLIC_ID>`.
+See [`docs/self-hosting.md`](docs/self-hosting.md) for the full guide
+(project mounting, user/admin management, ports, troubleshooting),
+[`docs/auditing/audit-execution.md`](docs/auditing/audit-execution.md)
+for the async/scheduling design, and
 [`docs/development/docker.md`](docs/development/docker.md) for what the
 image itself does.
 
@@ -462,7 +466,8 @@ calling agent does that, using context LaraDogs provides. See
 Phase 0 (bootstrap), Phase 1 (Project Discovery), Phase 2 (Audit Engine
 Foundation), Phase 3 (Finding Domain + Persistence, including its 3.1
 Safe-Finding-Resolution-Coverage and 3.2 Persistent-Project-Audit-Workflow
-sub-phases), and Phase 7 (Dashboard) are complete. Phase 4
+sub-phases), and Phase 7 (Dashboard, plus its 7.1.1–7.1.4 self-hosting/
+authorization/async-execution sub-phases) are complete. Phase 4
 (Security/Dependency Scanners) is in progress — `composer audit`,
 `npm audit`, and Semgrep (foundation + a first Laravel-aware ruleset, 12
 rules) are done (tracked in commit history/ADR notes as sub-phases

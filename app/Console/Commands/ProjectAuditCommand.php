@@ -37,6 +37,11 @@ final class ProjectAuditCommand extends Command
         $result = $runner->run($project);
 
         return match ($result->outcome) {
+            // run() always resolves Queued -> Completed/Failed/
+            // AlreadyRunning/PathUnavailable in the same process (see
+            // RunProjectAudit::run()'s own docblock) — this arm only
+            // exists so the match stays exhaustive.
+            RunProjectAuditOutcome::Queued => $this->failWith('Unexpected: audit is still queued after a synchronous run.'),
             RunProjectAuditOutcome::PathUnavailable => $this->failWith(
                 $result->discoveryFailure === null
                     ? "Project path is no longer available: {$project->path}"
@@ -44,8 +49,8 @@ final class ProjectAuditCommand extends Command
             ),
             RunProjectAuditOutcome::AlreadyRunning => $this->failWith(
                 $result->conflictingScan === null
-                    ? 'Another audit for this project is already running.'
-                    : "Another audit for this project is already running (scan {$result->conflictingScan->public_id}, started {$result->conflictingScan->started_at->diffForHumans()}).",
+                    ? 'Another audit for this project is already queued or running.'
+                    : "Another audit for this project is already {$result->conflictingScan->status->value} (scan {$result->conflictingScan->public_id}, started {$result->conflictingScan->started_at->diffForHumans()}).",
             ),
             RunProjectAuditOutcome::Completed => $result->scan === null
                 ? $this->failWith('Unexpected: audit completed but no scan was returned.')

@@ -99,7 +99,7 @@ it('runs the full pipeline end-to-end and persists a Scan, ScanAnalyzerExecution
 
     $project = Project::query()->create(['name' => 'Semgrep E2E Fixture', 'path' => $context->projectPath]);
 
-    $scan = $scanRunner->run($project, $context);
+    $scan = $scanRunner->runForProject($project, $context);
 
     expect($scan->status)->toBe(ScanStatus::Completed);
 
@@ -158,7 +158,7 @@ it('never executes target PHP source — only reads it as data — even when the
     [$scanRunner] = semgrepScanRunner($processRunner);
     $project = Project::query()->create(['name' => 'Semgrep Malicious Fixture', 'path' => $context->projectPath]);
 
-    $scan = $scanRunner->run($project, $context);
+    $scan = $scanRunner->runForProject($project, $context);
 
     expect($scan->status)->toBe(ScanStatus::Completed);
     expect(Finding::query()->where('analyzer_id', 'semgrep')->count())->toBe(1);
@@ -226,7 +226,7 @@ it('coexists with composer-audit in the same run without either clobbering the o
     $scanRunner = new ScanRunner(new AuditEngine($registry), $registry, $recorder);
 
     $project = Project::query()->create(['name' => 'Semgrep+Composer Multi Fixture', 'path' => $context->projectPath]);
-    $scan = $scanRunner->run($project, $context);
+    $scan = $scanRunner->runForProject($project, $context);
 
     expect($scan->status)->toBe(ScanStatus::Completed);
 

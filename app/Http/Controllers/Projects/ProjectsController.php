@@ -12,6 +12,7 @@ use App\Models\Audit\Finding;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
 use App\Models\Audit\ScanAnalyzerExecution;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -33,6 +34,7 @@ final class ProjectsController extends Controller
     }
 
     public function show(
+        Request $request,
         Project $project,
         ProjectSummaryQuery $summaryQuery,
         ScanHistoryQuery $scanHistoryQuery,
@@ -42,6 +44,8 @@ final class ProjectsController extends Controller
         $latestScan = $project->latestScan()->with('analyzerExecutions')->first();
         $recentScans = $scanHistoryQuery->recentFor($project, limit: 5);
         $recentFindings = $findingsQuery->paginateForProject($project, perPage: 10);
+        $activeScan = $project->activeScan();
+        $canManage = ! $request->user()?->isUser();
 
         return Inertia::render('projects/show', [
             'project' => [
@@ -55,6 +59,20 @@ final class ProjectsController extends Controller
             'recent_scans' => $recentScans->map($this->scanToArray(...))->all(),
             'recent_findings' => $recentFindings->getCollection()->map($this->findingToArray(...))->all(),
             'audit_command' => "docker compose exec app php artisan laradogs:project:audit {$project->public_id}",
+            'active_scan' => $activeScan === null ? null : [
+                'id' => $activeScan->public_id,
+                'status' => $activeScan->status->value,
+                'started_at' => $activeScan->started_at->toIso8601String(),
+                'running_at' => $activeScan->running_at?->toIso8601String(),
+            ],
+            'schedule' => [
+                'audit_schedule' => $project->audit_schedule->value,
+                'audit_schedule_day_of_week' => $project->audit_schedule_day_of_week,
+                'audit_schedule_day_of_month' => $project->audit_schedule_day_of_month,
+                'next_audit_at' => $project->next_audit_at?->toIso8601String(),
+                'last_scheduled_audit_at' => $project->last_scheduled_audit_at?->toIso8601String(),
+            ],
+            'can_manage_audits' => $canManage,
         ]);
     }
 
@@ -99,6 +117,7 @@ final class ProjectsController extends Controller
         return [
             'id' => $scan->public_id,
             'status' => $scan->status->value,
+            'origin' => $scan->origin->value,
             'started_at' => $scan->started_at->toIso8601String(),
             'finished_at' => $scan->finished_at?->toIso8601String(),
             'duration_ms' => $scan->duration_ms,

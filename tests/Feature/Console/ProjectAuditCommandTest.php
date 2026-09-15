@@ -4,6 +4,7 @@ use App\Audit\Engine\Registry\AnalyzerRegistry;
 use App\Audit\Findings\ScanStatus;
 use App\Audit\Projects\RegisterProject;
 use App\Models\Audit\Project;
+use App\Models\Audit\ProjectActiveScan;
 use App\Models\Audit\Scan;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -63,12 +64,17 @@ it('fails with a clear diagnostic and non-zero exit code for an unknown project 
 it('fails with a clear diagnostic when another audit is already running for the project', function () {
     $project = registerFixtureProjectForCli();
 
-    Scan::query()->create([
+    $runningScan = Scan::query()->create([
         'project_id' => $project->id,
         'status' => ScanStatus::Running,
         'started_at' => now(),
         'project_profile' => ['project' => ['type' => 'laravel']],
     ]);
+    // The portable mutex row (Phase 7.1.4) — every real Running scan
+    // always has one (created atomically by
+    // ScanRecorder::enqueueScan()); a raw fixture like this must mirror
+    // that invariant for the concurrency guard to see it as active.
+    ProjectActiveScan::query()->create(['project_id' => $project->id, 'scan_id' => $runningScan->id]);
 
     bindFakeRegistryForCli();
 

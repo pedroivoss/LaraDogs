@@ -117,7 +117,7 @@ function runSemgrepScan(Project $project, AuditContext $context, FakeProcessRunn
         new FindingReconciler(new FindingLifecycleService),
     );
 
-    return (new ScanRunner(new AuditEngine($registry), $registry, $recorder))->run($project, $context);
+    return (new ScanRunner(new AuditEngine($registry), $registry, $recorder))->runForProject($project, $context);
 }
 
 it('proves all 5 lifecycle cases end-to-end with the real SemgrepAnalyzer across successive scans', function () {

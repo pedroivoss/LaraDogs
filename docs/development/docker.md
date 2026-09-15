@@ -2,14 +2,18 @@
 
 The "Personal" profile (single-node local/self-hosted use, described in
 [ADR-0005](../architecture/decisions/ADR-0005-persistence-and-deployment-profiles.md))
-runs two containers: the LaraDogs `app` and a dedicated, isolated MySQL
-`db` service (Phase 7.1.1). MySQL is this Compose profile's own choice for
-a realistic, self-contained UAT environment — not an architectural
+runs four containers: the LaraDogs `app`, a dedicated, isolated MySQL
+`db` service (Phase 7.1.1), and — Phase 7.1.4 — `worker` (a queue worker
+that executes audits) and `scheduler` (ticks every minute, dispatches due
+scheduled audits). MySQL is this Compose profile's own choice for a
+realistic, self-contained UAT environment — not an architectural
 requirement. LaraDogs itself officially supports SQLite, MySQL, MariaDB,
 and PostgreSQL equally; see
 [ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md)
-and [Database support](#database-support) below. There is no "Server"
-profile (Redis, workers, scheduler, reverse proxy) yet — see the roadmap.
+and [Database support](#database-support) below. There is still no
+reverse-proxy/PHP-FPM "Server" profile — see
+[Why not Nginx + PHP-FPM](#why-not-nginx--php-fpm-yet) below and the
+roadmap.
 
 ## Start
 
@@ -76,6 +80,61 @@ Docker (see [`setup.md`](setup.md)) against an external instance.
   separate from the internal `DB_PORT=3306` LaraDogs itself always uses
   — see [Start](#start) above.
 
+## Worker & scheduler services (Phase 7.1.4)
+
+Two additional services, both built from the exact same image as `app`
+(same `Dockerfile`, same `context`), each overriding only the container
+`command:`:
+
+- **`worker`** — `php artisan queue:work --timeout=2000 --tries=1
+--memory=256`. Consumes `App\Jobs\RunProjectAuditJob` off the
+  `database` queue connection (portable — no Redis) and actually runs
+  analyzers, so it mounts `/projects` read-only, exactly like `app`.
+  `--timeout=2000` is deliberately **above**
+  `laradogs.semgrep.timeout_seconds`'s 1800s default — a queue worker
+  timeout shorter than the analyzer it's meant to let finish would kill
+  a legitimately still-running scan; raise both together if you raise
+  `LARADOGS_SEMGREP_TIMEOUT_SECONDS`. `--tries=1`: an expensive,
+  possibly-20-minute audit is deliberately never auto-retried — a failed
+  scan becomes a `Failed` `Scan` row an operator (or the next manual/
+  scheduled run) can act on, not a silent retry storm.
+- **`scheduler`** — `php artisan schedule:work`, Laravel's own
+  long-running foreground scheduler loop (confirmed via its actual
+  `WorkCommand` signature in `vendor/laravel/framework`, not guessed).
+  Every minute it invokes `laradogs:project:dispatch-due-audits`, which
+  only **enqueues** due projects onto the same queue `worker` consumes —
+  it never runs an analyzer itself, so `scheduler` does **not** mount
+  `/projects` at all (least privilege).
+
+Both services:
+
+- Set `LARADOGS_SKIP_MIGRATIONS=true` and `depends_on: app: condition:
+service_healthy` — exactly one container (`app`) ever runs
+  `migrate --force`; `worker`/`scheduler` only start once `app` has
+  already applied every migration, avoiding a genuine race where three
+  containers could attempt the same `CREATE TABLE` simultaneously
+  (Laravel has no built-in cross-process migration lock).
+- Publish **no host port** — nothing external ever talks to them
+  directly.
+- Set `healthcheck: disable: true` — the Dockerfile's own `HEALTHCHECK`
+  curls `app`'s HTTP `/up` route; neither of these services opens an
+  HTTP port, so that inherited check would always fail and misreport a
+  healthy process as `unhealthy` forever. `restart: unless-stopped`
+  already recovers a genuinely crashed process without it.
+- `restart: unless-stopped`, same as `app`/`db`.
+
+Queued jobs are durable across a `worker` restart (including
+`docker compose restart`) because the `database` queue driver persists
+them in MySQL — nothing is held only in the worker process's memory.
+Verified directly: stopping `worker` mid-queue leaves the job visible in
+the `jobs` table; starting it back up processes that job with no manual
+intervention.
+
+Full audit-execution design (concurrency, scan lifecycle, heartbeat,
+scheduling semantics) is in
+[`../auditing/audit-execution.md`](../auditing/audit-execution.md) rather
+than duplicated here.
+
 ## Project mount (auditing local projects)
 
 `docker-compose.yml` never hardcodes a personal path — the `app` service
@@ -120,6 +179,10 @@ network. Use `docker compose exec app php artisan ...` instead — see
 **Project path not found / empty "Add Project" picker** — see
 [`../self-hosting.md`](../self-hosting.md#troubleshooting)'s project-mount
 troubleshooting.
+
+**A "Run Audit" click never leaves "Queued"** — see
+[`../self-hosting.md`](../self-hosting.md#troubleshooting)'s worker
+troubleshooting entry (`docker compose ps worker`).
 
 ## Stop
 
@@ -351,9 +414,12 @@ and `storage/app` is already `laradogs`-owned via the existing
 
 Phase 0 explicitly avoids over-building Docker before there's an audit
 domain to justify it — see ADR-0005. `php artisan serve` is adequate for
-local/self-hosted single-user use. A production-grade Server profile
-(Nginx/FPM split, queue workers, scheduler, PostgreSQL, Redis) is future
-work, tracked in [`../roadmap/roadmap.md`](../roadmap/roadmap.md).
+local/self-hosted single-user use, even now that `worker`/`scheduler`
+exist (Phase 7.1.4) — those needed a portable queue driver and a
+long-running scheduler loop, not a web-tier change. A production-grade
+Server profile (Nginx/FPM split, PostgreSQL, Redis, horizontal worker
+scaling) is still future work, tracked in
+[`../roadmap/roadmap.md`](../roadmap/roadmap.md).
 
 ## Known limitations
 

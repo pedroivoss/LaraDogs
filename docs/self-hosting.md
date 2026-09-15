@@ -1,4 +1,4 @@
-# Self-Hosting LaraDogs (Phase 7.1.1 / 7.1.2 / 7.1.3)
+# Self-Hosting LaraDogs (Phase 7.1.1 / 7.1.2 / 7.1.3 / 7.1.4)
 
 This is the complete guide to running LaraDogs as a real, self-hosted
 Docker deployment: the environment, the project-mount model, the
@@ -26,12 +26,19 @@ Then:
 1. Open `http://localhost:17347`.
 2. Log in with the credentials you just created.
 3. Go to **Projects → Add Project**, pick a directory, register it.
-4. Copy its public ID from the Project Detail page.
-5. Run `docker compose exec app php artisan laradogs:project:audit <PUBLIC_ID>`.
-6. Refresh the Dashboard and browse the results.
+4. On the Project Detail page, click **Run Audit**.
+5. Watch it go Queued → Running → Completed (the page polls itself; no
+   refresh needed) and browse the results.
+
+No terminal is needed for a normal manual audit after registration — the
+`docker compose exec app php artisan laradogs:project:audit <PUBLIC_ID>`
+command shown on Project Detail remains available for
+debugging/scripted use (see [Audit workflow](#audit-workflow) below).
 
 Migrations run automatically on every container start (see
-`docker/entrypoint.sh`) — no separate migration step is needed.
+`docker/entrypoint.sh`) — no separate migration step is needed. `docker
+compose up -d --build` above brings up all four services (`app`, `db`,
+`worker`, `scheduler`) — see [Docker services](#docker-services) below.
 
 ## Canonical Docker execution model
 
@@ -80,6 +87,18 @@ set to; that variable only controls whether/where MySQL is reachable
 from the **host** (e.g. for a local GUI client). See
 [`development/docker.md`](development/docker.md#the-db-service) for the
 full `db` service (image, healthcheck, isolation, volume).
+
+## Docker services
+
+Four services: `app` (the Dashboard/CLI), `db` (MySQL), and — new in
+Phase 7.1.4 — `worker` (consumes queued audits) and `scheduler` (ticks
+every minute, dispatches due scheduled audits). Neither `worker` nor
+`scheduler` publishes a host port; only `worker` mounts `/projects`
+(read-only, same as `app`) — `scheduler` never touches project
+filesystems, it only enqueues. Full detail (timeouts, healthcheck
+behavior, retry policy) in
+[`development/docker.md`](development/docker.md#worker--scheduler-services-phase-714)
+and [`auditing/audit-execution.md`](auditing/audit-execution.md).
 
 ## Project-root mounting
 
@@ -138,6 +157,9 @@ type; see `App\Models\Role`) — no RBAC package, no teams/organizations:
 | -------------------------- | ----- | ----- | ---- |
 | Dashboard / view projects  | yes   | yes   | yes  |
 | Register project           | yes   | yes   | no   |
+| Run manual audit           | yes   | yes   | no   |
+| Manage audit schedule      | yes   | yes   | no   |
+| View audit schedule/status | yes   | yes   | yes  |
 | Create/manage normal Users | yes   | yes   | no   |
 | Manage Admins              | yes   | no    | no   |
 | Create Admin               | yes   | no    | no   |
@@ -149,10 +171,10 @@ type; see `App\Models\Role`) — no RBAC package, no teams/organizations:
 **Project registration is Owner/Admin-only.** It grants access to
 server-mounted filesystem paths under `/projects`, which this V1
 self-hosted model treats as a staff capability, not a general user one.
-(Running an already-registered project's audit is currently CLI-only
-regardless of role — see
-[`dashboard.md`](dashboard.md#audit-trigger-design-cli-only-this-phase) —
-so this restriction is specifically about the registration step.)
+**Triggering/scheduling an audit is the same staff-only capability**
+(Phase 7.1.4) — an audit consumes real server CPU/network, an
+administrative operation in this model, not a general user one; see
+[`auditing/audit-execution.md`](auditing/audit-execution.md).
 
 **The Owner is never a management target** — not by an Admin, not even
 by themselves. The Owner's own profile/password go through the same
@@ -309,14 +331,22 @@ resolved path twice never creates a duplicate row; see
 
 ## Audit workflow
 
-Dashboard-triggered audits remain deliberately out of scope (long-running
-Semgrep + no queue worker process yet — see
-[`dashboard.md`](dashboard.md#audit-trigger-design-cli-only-this-phase)).
-Project Detail shows the exact, copy/paste-ready Docker command:
+Click **Run Audit** on Project Detail (Owner/Admin only — see
+[Authorization model](#authorization-model) above; a User sees the same
+card read-only). It queues instantly and a worker picks it up — no
+terminal needed. Project Detail also still shows the exact,
+copy/paste-ready CLI command, which remains fully supported and runs
+**synchronously** (useful for debugging/scripted automation):
 
 ```bash
 docker compose exec app php artisan laradogs:project:audit <PUBLIC_ID>
 ```
+
+Optionally enable an **automatic schedule** (Disabled by default,
+Daily/Weekly/Monthly) from the same page — Owner/Admin to change,
+visible to every role. Full design (concurrency, worker failure
+handling, scheduling semantics) in
+[`auditing/audit-execution.md`](auditing/audit-execution.md).
 
 ## Persistence
 
@@ -324,6 +354,13 @@ docker compose exec app php artisan laradogs:project:audit <PUBLIC_ID>
 docker compose down       # preserves both named volumes (storage/MySQL)
 docker compose down -v    # DESTROYS them — only for a full local reset
 ```
+
+Queued/scheduled audits survive `docker compose restart` (or a `worker`
+container crash and restart) — the queue itself is backed by MySQL
+(`QUEUE_CONNECTION=database`), not held in the worker process's memory.
+A scan that was genuinely `Running` when its worker died is recovered
+automatically the next time an audit is requested for that project — see
+[`auditing/audit-execution.md`](auditing/audit-execution.md#stale-scan-recovery-two-separate-thresholds).
 
 ## Troubleshooting
 
@@ -356,6 +393,19 @@ host path.
 **Empty "Add Project" picker** — check `LARADOGS_PROJECTS_PATH` is set
 and points at a real directory containing project subdirectories, then
 `docker compose down && docker compose up -d`.
+
+**"Run Audit" shows "Queued" forever** — check the `worker` service is
+actually running: `docker compose ps worker`. If it's not, `docker
+compose up -d worker` (or `docker compose up -d` to bring up everything);
+a queued-but-unpicked-up scan is also automatically reclaimed as `Failed`
+after `queued_scan_stale_threshold_seconds` (120s default) the next time
+an audit is requested for that project — see
+[`auditing/audit-execution.md`](auditing/audit-execution.md).
+
+**Automatic schedule never seems to fire** — check the `scheduler`
+service is running: `docker compose ps scheduler`. `docker compose logs
+scheduler` shows each minute's tick; a project only fires once its
+`next_audit_at` (shown on Project Detail) is actually in the past.
 
 ## Known limitations
 
@@ -397,3 +447,13 @@ and points at a real directory containing project subdirectories, then
 - No Docker socket is mounted; nothing auto-mounts arbitrary host paths.
 - Registered project paths are always the container-canonical path
   (`/projects/<name>`) — a host path is never persisted or displayed.
+- Triggering/scheduling an audit is Owner/Admin-only, enforced server-side
+  (route middleware + policy), never merely hidden in the UI. A project
+  can never have two active scans at once — enforced by a real database
+  primary-key constraint (`project_active_scans`), not an advisory
+  check — so a double-click or a manual+scheduled race can never dispatch
+  two concurrent audits. Queued jobs carry only a stable scan id, never a
+  filesystem tree or analyzer instance. The `scheduler` service never
+  mounts `/projects` and never runs an analyzer — it only enqueues. See
+  [`auditing/audit-execution.md`](auditing/audit-execution.md) for the
+  full design.

@@ -27,15 +27,26 @@ fi
 # `db` here. Bounded retry (not an infinite loop) rather than failing fast
 # and relying solely on Docker's outer `restart: unless-stopped` to paper
 # over it; `migrate --force` is idempotent, so retrying it is safe.
-attempt=0
-until php artisan migrate --force; do
-    attempt=$((attempt + 1))
-    if [ "$attempt" -ge 15 ]; then
-        echo "error: database still unreachable after ${attempt} attempts; giving up." >&2
-        exit 1
-    fi
-    echo "warning: migration attempt ${attempt} failed (database not ready yet?) — retrying in 2s..." >&2
-    sleep 2
-done
+#
+# Phase 7.1.4: `worker`/`scheduler` use this SAME image/entrypoint but set
+# LARADOGS_SKIP_MIGRATIONS=true (see docker-compose.yml) — Laravel has no
+# built-in cross-process migration lock, so THREE containers all racing
+# `migrate --force` against a fresh database could genuinely have two of
+# them attempt the same `CREATE TABLE` simultaneously. Simplest portable
+# fix: exactly one container (`app`) ever runs migrations; the others
+# `depends_on: app: condition: service_healthy`, so migrations are always
+# already applied by the time they start at all.
+if [ "${LARADOGS_SKIP_MIGRATIONS:-false}" != "true" ]; then
+    attempt=0
+    until php artisan migrate --force; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -ge 15 ]; then
+            echo "error: database still unreachable after ${attempt} attempts; giving up." >&2
+            exit 1
+        fi
+        echo "warning: migration attempt ${attempt} failed (database not ready yet?) — retrying in 2s..." >&2
+        sleep 2
+    done
+fi
 
 exec "$@"

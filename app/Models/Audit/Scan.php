@@ -2,7 +2,9 @@
 
 namespace App\Models\Audit;
 
+use App\Audit\Findings\ScanOrigin;
 use App\Audit\Findings\ScanStatus;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
@@ -20,7 +22,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $public_id
  * @property int $project_id
  * @property ScanStatus $status
+ * @property ScanOrigin $origin
+ * @property int|null $initiated_by_user_id
  * @property CarbonImmutable $started_at
+ * @property CarbonImmutable|null $running_at
+ * @property CarbonImmutable|null $heartbeat_at
  * @property CarbonImmutable|null $finished_at
  * @property int|null $duration_ms
  * @property array<string,mixed> $project_profile
@@ -32,14 +38,18 @@ final class Scan extends Model
     use HasUlids;
 
     protected $fillable = [
-        'project_id', 'status', 'started_at', 'finished_at', 'duration_ms',
+        'project_id', 'status', 'origin', 'initiated_by_user_id', 'started_at',
+        'running_at', 'heartbeat_at', 'finished_at', 'duration_ms',
         'laradogs_version', 'source_revision', 'project_profile', 'environment',
         'findings_summary',
     ];
 
     protected $casts = [
         'status' => ScanStatus::class,
+        'origin' => ScanOrigin::class,
         'started_at' => 'datetime',
+        'running_at' => 'datetime',
+        'heartbeat_at' => 'datetime',
         'finished_at' => 'datetime',
         'project_profile' => 'array',
         'environment' => 'array',
@@ -52,6 +62,18 @@ final class Scan extends Model
     public function uniqueIds(): array
     {
         return ['public_id'];
+    }
+
+    /**
+     * Internal provenance only — see the `add_execution_tracking_to_scans_table`
+     * migration's own docblock on why this is never rendered as another
+     * user's identity in any shared (Owner/Admin/User) UI.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function initiator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'initiated_by_user_id');
     }
 
     /**

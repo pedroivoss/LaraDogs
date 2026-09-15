@@ -7,6 +7,7 @@ use App\Audit\Engine\AuditEngine;
 use App\Audit\Engine\Execution\ExecutionStatus;
 use App\Audit\Engine\Registry\AnalyzerRegistry;
 use App\Audit\Findings\FindingCandidate;
+use App\Audit\Findings\ScanOrigin;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
 
@@ -25,6 +26,13 @@ use App\Models\Audit\Scan;
  * seams that already depend on Engine types (`ScanRecorder` itself already
  * takes an `AuditRunResult`).
  *
+ * Phase 7.1.4: takes an ALREADY-reserved `Scan` (see
+ * {@see ScanRecorder::enqueueScan()}/{@see App\Audit\Projects\RunProjectAudit})
+ * rather than creating one itself — {@see run()} only transitions it
+ * Queued -> Running -> Completed/Failed. Also passes a heartbeat callback
+ * into {@see AuditEngine::run()} so `heartbeat_at` is touched after every
+ * analyzer stage, without the Engine itself ever depending on Eloquent.
+ *
  * An `AnalyzerExecution` only carries an analyzer's id/name/category/
  * status/result, never the analyzer instance itself (by design — see
  * `AuditPlanItem`), so normalizing candidates requires looking the
@@ -39,11 +47,28 @@ final class ScanRunner
         private readonly ScanRecorder $recorder,
     ) {}
 
-    public function run(Project $project, AuditContext $context): Scan
+    /**
+     * Convenience for callers that don't go through
+     * {@see App\Audit\Projects\RunProjectAudit} at all (e.g. tests
+     * exercising Discovery -> Engine -> persistence directly) —
+     * reserves a `Queued` scan via {@see ScanRecorder::enqueueScan()}
+     * and immediately runs it, equivalent to the pre-Phase-7.1.4
+     * single-step `run(Project, AuditContext)`.
+     */
+    public function runForProject(Project $project, AuditContext $context, ScanOrigin $origin = ScanOrigin::Cli): Scan
     {
-        $scan = $this->recorder->startScan($project, $context->profile);
+        $scan = $this->recorder->enqueueScan($project, $origin, null);
 
-        $runResult = $this->engine->run($context);
+        return $this->run($scan, $context);
+    }
+
+    public function run(Scan $scan, AuditContext $context): Scan
+    {
+        $this->recorder->beginRunning($scan, $context->profile);
+
+        $runResult = $this->engine->run($context, function () use ($scan): void {
+            $this->recorder->touchHeartbeat($scan);
+        });
 
         /** @var array<string, list<FindingCandidate>> $candidatesByAnalyzer */
         $candidatesByAnalyzer = [];

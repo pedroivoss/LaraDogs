@@ -6,6 +6,70 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 7.1.4: Audit Execution & Scheduling
+
+Asynchronous audit execution (a Dashboard "Run Audit" button, a queue
+worker, and optional per-project scheduling), replacing the CLI-only
+trigger Phase 7 shipped with — see
+[`docs/auditing/audit-execution.md`](docs/auditing/audit-execution.md).
+
+### Added
+
+- **`ScanStatus::Queued`** — a `Scan` now exists the moment an audit is
+  requested (manual, scheduled, or CLI), before discovery even runs, so
+  the Dashboard can show "Queued" immediately.
+- **`scans.origin`** (`manual`/`scheduled`/`cli`) and
+  **`scans.initiated_by_user_id`** (nullable) — provenance for "why did
+  this scan happen," without becoming a general audit-log framework.
+- **`scans.running_at`/`heartbeat_at`** — a heartbeat touched between
+  analyzer stages, used to distinguish a legitimately slow scan from a
+  dead worker.
+- **`project_active_scans`** — a portable concurrency mutex (primary key
+  = `project_id`, one row per project maximum, enforced by the database
+  itself on every supported engine) shared by the CLI, the Dashboard, and
+  the scheduler — a project can never have two active scans at once.
+- **`App\Jobs\RunProjectAuditJob`** — a thin queue job (carries only a
+  scan id) on Laravel's portable `database` queue connection (no Redis).
+  `$tries = 1` (deliberately no auto-retry of an expensive audit),
+  `$timeout = 2000` (above `laradogs.semgrep.timeout_seconds`'s default).
+- **`POST /projects/{project}/audits`** — the Dashboard's "Run Audit"
+  button (Owner/Admin, throttled, returns immediately).
+- **Optional per-project schedule** (`projects.audit_schedule`:
+  Disabled/Daily/Weekly/Monthly, `audit_schedule_day_of_week`,
+  `audit_schedule_day_of_month`, `next_audit_at`, `last_scheduled_audit_at`)
+  — Disabled by default. `App\Audit\Projects\ProjectAuditScheduler` (pure
+  date calculation, monthly day-of-month clamped to the target month's
+  real last day) and `App\Audit\Projects\DispatchDueProjectAudits`
+  (`laradogs:project:dispatch-due-audits`, ticked every minute).
+  `PUT /projects/{project}/audit-schedule` (Owner/Admin to change,
+  visible to every role).
+- **`queued_scan_stale_threshold_seconds`** config (default 120s) —
+  separate from the existing `stale_scan_threshold_seconds` (3600s,
+  unchanged), since "queued and never picked up" and "running and the
+  worker died" are different failure modes.
+- **`worker`/`scheduler` Docker services** — same image as `app`;
+  `worker` runs `queue:work` (mounts `/projects:ro`), `scheduler` runs
+  `schedule:work` (no project mount — it only ever enqueues). Neither
+  publishes a host port; neither inherits the `app` image's HTTP
+  healthcheck (they don't serve HTTP).
+- Inertia's built-in `usePoll()` drives the Dashboard's live Queued/
+  Running status while a scan is active — no WebSockets/Reverb/SSE.
+
+### Changed
+
+- `StaleScanReclaimer` now reclaims `Queued` and `Running` scans
+  separately (see the new config key above) and prefers `heartbeat_at`
+  over `started_at` for `Running` scans when present (falling back for
+  scans created before this phase).
+- `laradogs:project:audit` keeps its exact prior synchronous CLI
+  behavior — internally now goes through `RunProjectAudit::run()`
+  (`enqueue()` + `execute()` in one process, `origin = cli`) rather than
+  a single-step `startScan()`; its "already running" diagnostic now
+  reports the conflicting scan's actual status (`queued` or `running`).
+- `docker/entrypoint.sh` gates the migration block behind
+  `LARADOGS_SKIP_MIGRATIONS` — `worker`/`scheduler` set this so exactly
+  one container (`app`) ever runs migrations.
+
 ## [Unreleased] — Phase 7.1.3: Instance Owner & Access Control Hardening
 
 Replaces the Phase 7.1.2 `users.is_admin` boolean with a three-tier

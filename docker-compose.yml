@@ -36,6 +36,28 @@
 # data). `docker compose down -v` destroys them — see
 # docs/development/docker.md.
 #
+# Phase 7.1.4 adds two more services, both the SAME image as `app`:
+#   worker    — `php artisan queue:work`, runs RunProjectAuditJob (manual
+#               Dashboard + scheduled audits both go through this same
+#               queue). Needs the SAME /projects:ro mount as `app` — an
+#               audit reads the mounted project just like the Dashboard
+#               does. --timeout is set to 2000s, deliberately ABOVE
+#               laradogs.semgrep.timeout_seconds's 1800s default (see
+#               config/laradogs.php) — a queue worker timeout shorter
+#               than the analyzer it's meant to let finish would kill a
+#               legitimately-still-running Semgrep pass. If you raise
+#               LARADOGS_SEMGREP_TIMEOUT_SECONDS, raise this too.
+#   scheduler — `php artisan schedule:work` (Laravel's own long-running
+#               foreground scheduler loop — see
+#               docs/auditing/audit-execution.md), which every minute
+#               invokes `laradogs:project:dispatch-due-audits`. That
+#               command only ENQUEUES due projects' audits onto the same
+#               queue `worker` consumes — it never runs an analyzer
+#               itself, so this service does NOT need the /projects
+#               mount (least privilege). Neither service publishes a
+#               host port — nothing external ever talks to them
+#               directly.
+#
 # No volume is mounted over /app/database (Phase 7.1.2 fix — real bug,
 # found and root-caused via actual validation, not theoretical): that
 # path also holds database/migrations/, application CODE that must
@@ -94,6 +116,56 @@ services:
         networks:
             - laradogs
         restart: unless-stopped
+
+    worker:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        command: php artisan queue:work --timeout=2000 --tries=1 --memory=256
+        environment:
+            LARADOGS_SKIP_MIGRATIONS: 'true'
+        env_file:
+            - .env
+        volumes:
+            - laradogs-storage:/app/storage
+            - ${LARADOGS_PROJECTS_PATH:-./projects}:/projects:ro
+        depends_on:
+            app:
+                condition: service_healthy
+        networks:
+            - laradogs
+        restart: unless-stopped
+        # The Dockerfile's own HEALTHCHECK assumes the `app` service's
+        # HTTP server (`curl .../up`) — this service never runs one
+        # (`queue:work` only), so that inherited check would ALWAYS fail
+        # and misreport a healthy worker as "unhealthy" forever. Disabled
+        # rather than left misleading; `restart: unless-stopped` above
+        # already recovers a genuinely crashed process.
+        healthcheck:
+            disable: true
+
+    scheduler:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        command: php artisan schedule:work
+        environment:
+            LARADOGS_SKIP_MIGRATIONS: 'true'
+        env_file:
+            - .env
+        volumes:
+            - laradogs-storage:/app/storage
+        depends_on:
+            app:
+                condition: service_healthy
+        networks:
+            - laradogs
+        restart: unless-stopped
+        # Same reasoning as `worker` above — `schedule:work` never opens
+        # an HTTP port, so the inherited `curl .../up` HEALTHCHECK would
+        # always fail.
+        healthcheck:
+            disable: true
 
 networks:
     laradogs:

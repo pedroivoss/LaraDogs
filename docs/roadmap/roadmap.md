@@ -374,6 +374,46 @@ unauthorized mutation). No health score, no charts/trend lines, no MCP
 server, no Git integration, no quality gates, no allimaPanel-specific
 code — see [`../dashboard.md`](../dashboard.md) for the full account.
 
+## What Phase 7.1.4 actually delivered
+
+Asynchronous audit execution and optional scheduling, converging CLI/
+Dashboard/scheduler on one entry point (`App\Audit\Projects\RunProjectAudit`,
+split into `enqueue()`/`execute()`/`run()`): a Dashboard "Run Audit"
+button (Owner/Admin, `POST /projects/{project}/audits`, throttled),
+`App\Jobs\RunProjectAuditJob` on Laravel's portable `database` queue (no
+Redis), and two new Docker services (`worker`, `scheduler`) — see
+[`../development/docker.md`](../development/docker.md#worker--scheduler-services-phase-714).
+`ScanStatus` gained `Queued`, giving the Dashboard immediate feedback
+before a worker even starts. Concurrency is a real database primary-key
+constraint (`project_active_scans`, one row per project) rather than the
+Phase 7 predecessor's advisory check — CLI/Dashboard/scheduler share it,
+so no combination of manual/scheduled triggers can ever double-dispatch
+one project. `StaleScanReclaimer` was split into two independently
+configured thresholds (`queued_scan_stale_threshold_seconds`, new;
+`stale_scan_threshold_seconds`, unchanged key) and made heartbeat-aware
+(`heartbeat_at`, touched between analyzer stages via a plain callable
+threaded through `AuditEngine`, keeping the Engine itself Eloquent-free
+per ADR-0010) — closing the exact "can't distinguish a slow scan from a
+dead worker" limitation the Phase 7 predecessor explicitly accepted.
+Optional per-project scheduling (`AuditSchedule`: Disabled/Daily/Weekly/
+Monthly, Disabled by default) is computed by a pure, unit-tested
+`ProjectAuditScheduler` (instance-wide configured time, monthly
+day-of-month clamped to the target month's real last day) and dispatched
+by `DispatchDueProjectAudits` (`laradogs:project:dispatch-due-audits`,
+ticked every minute by `schedule:work`) — a missed schedule produces
+exactly one catch-up run, never a backlog, and a failed/skipped dispatch
+still advances `next_audit_at` so scheduling never silently stalls. Scan
+`origin` (`manual`/`scheduled`/`cli`) plus `initiated_by_user_id`
+(nullable) answer "why did this scan happen" without becoming a general
+audit-log framework, and without undermining Phase 7.1.3's Owner-privacy
+model (nothing renders another user's identity from this field). The CLI
+(`laradogs:project:audit`) keeps its exact prior synchronous behavior —
+a deliberate compatibility decision, not an oversight. See
+[`../auditing/audit-execution.md`](../auditing/audit-execution.md) for
+the full design, including what's explicitly still out of scope (push
+notifications, WebSockets/Reverb/SSE, Redis, arbitrary cron expressions,
+per-project schedule time).
+
 ## Deferred items (noticed during Phase 0, intentionally not built)
 
 These are candidate improvements or gaps spotted while bootstrapping.
@@ -384,12 +424,15 @@ creep" instruction for this phase.
   `/register` route is open. For a security tool, this should likely be
   invite-only or admin-provisioned before real findings exist behind it.
   → Phase 10.
-- **Server deployment profile** (Redis, queue workers, scheduler, reverse
-  proxy, multi-project). → Tracked across Phase 3 (multi-project schema),
-  Phase 8 (workers for scan execution), and a dedicated Docker Compose
-  profile likely alongside Phase 11/13. Database vendor choice for this
-  profile — SQLite, MySQL, MariaDB, or PostgreSQL — is independent of it;
-  see [ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md).
+- **Server deployment profile** (Redis, reverse proxy, horizontal worker
+  scaling, multi-tenant/multi-project). **Partially delivered in Phase
+  7.1.4**: a portable `database`-queue worker and a scheduler service now
+  exist (single-node, no Redis — see
+  [`../auditing/audit-execution.md`](../auditing/audit-execution.md)); a
+  reverse-proxy/PHP-FPM split, Redis, and horizontal worker scaling remain
+  future work, likely alongside Phase 11/13. Database vendor choice for
+  this profile — SQLite, MySQL, MariaDB, or PostgreSQL — is independent of
+  it; see [ADR-0007](../architecture/decisions/ADR-0007-database-agnostic-persistence.md).
 - **Scanner sandboxing implementation** (containers-per-run vs. restricted
   subprocess). Constraint recorded in ADR-0004; Phase 4 resolved this for
   the process-boundary level (argv-only, env-allowlisted, output-capped

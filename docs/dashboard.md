@@ -129,48 +129,53 @@ shipped code (previously reserved/unused, per that enum's own docblock).
   Phase 3.2 tests already proved were safe — this phase adds no new
   suppression semantics, only a UI for the existing ones.
 
-## Audit trigger design (CLI-only this phase)
+## Audit trigger design (Phase 7.1.4: async queue + scheduler)
 
-**Decision: the Dashboard does NOT trigger new audits.** Project Detail
-shows the exact `laradogs:project:audit {id}` command to run instead.
+**Superseded.** Phase 7 originally shipped without a Dashboard trigger —
+see [Known limitations](#known-limitations) for that history. Phase
+7.1.4 adds a "Run Audit" button (Owner/Admin, per
+[`self-hosting.md`](self-hosting.md#authorization-model)) backed by a
+real queue worker: the button dispatches a job and returns immediately
+(never runs an analyzer inside the HTTP request), the Dashboard polls
+while a scan is active, and the previously-blocking concerns above are
+both resolved — a worker process is now documented and running (the
+`worker` Docker service), and a synchronous-HTTP-timeout scenario no
+longer exists because nothing runs synchronously over HTTP anymore. Full
+design (concurrency mutex, scan lifecycle, heartbeat, scheduling, worker
+failure handling) lives in
+[`auditing/audit-execution.md`](auditing/audit-execution.md) rather than
+duplicated here — this page only covers what changed in the Dashboard
+UI itself:
 
-Why, given the spec explicitly allowed either a queued job or disabling
-Dashboard-triggered scanning:
+- Project Detail's "Audit" card shows **Run Audit** / a **Queued**/
+  **Running** badge with elapsed time / the button again once terminal —
+  never a fake percentage, and never "Scanning complete" language before
+  the scan is genuinely `Completed`.
+- A **User** role sees the same card read-only (current status, last
+  audit) — the button itself is absent, not merely disabled; the server
+  independently refuses the endpoint regardless (see
+  [`auditing/audit-execution.md`](auditing/audit-execution.md#manual-audit-dashboard)).
+- Scan History naturally includes manual/scheduled/CLI runs side by side
+  (via the existing, unmodified `ScanHistoryQuery`) — no separate history
+  view was built for queued/scheduled audits.
+- A new **Automatic Audits** card (Owner/Admin-only to edit, visible to
+  every role) configures the optional per-project schedule — see
+  [`auditing/audit-execution.md`](auditing/audit-execution.md#scheduling).
 
-1. **A synchronous HTTP-request-triggered audit is unsafe as a real
-   design**, not just slow: Semgrep alone can take up to
-   `laradogs.semgrep.timeout_seconds` (1800s default), and a real project
-   with multiple analyzers can genuinely take ~30 minutes. An HTTP
-   request held open that long will typically be killed by the browser,
-   a reverse proxy, or the web server's own timeout well before
-   completion — which would leave a `Scan` stuck `running`, i.e. it
-   would _actively reproduce_ the exact stale-scan problem via a NEW,
-   _more common_ path than the crashed-CLI-process case Phase 3.2 already
-   documented.
-2. **A queued job needs a worker actually running to not be silently
-   broken.** `QUEUE_CONNECTION=database` is already configured and the
-   `jobs` table migration already exists (Phase 0 starter kit) — dispatching
-   to it would technically reuse existing infrastructure, not add new
-   infrastructure in the Redis/Horizon sense. But no worker process is
-   documented or running in this project's Docker setup today; a
-   dispatched job with nobody consuming the queue means a user clicks
-   "Run audit," sees a generic "queued" message, and then **nothing ever
-   happens**, with no error surfaced — arguably a worse experience than a
-   clear, honest "not available yet, here's the command."
-3. The task's own spec explicitly permits this exact choice: _"OR disable
-   Dashboard-triggered scanning and expose the CLI instruction."_
+## Stale-running-scan decision (superseded)
 
-This was a genuine decision, not a shortcut — see
-[Known limitations](#known-limitations) for what would need to exist
-first (a documented, monitored worker process) before revisiting it.
+Phase 7's original age-based, single-threshold reclaimer (documented
+below for history) has been replaced by a heartbeat-aware, two-threshold
+version — see
+[`auditing/audit-execution.md`](auditing/audit-execution.md#stale-scan-recovery-two-separate-thresholds).
+The known trade-off this section used to describe (no way to distinguish
+a genuinely slow scan from a dead worker without new infrastructure) is
+resolved: `heartbeat_at` is now touched between analyzer stages,
+specifically to make that distinction without adding PID tracking or an
+external service.
 
-## Stale-running-scan decision (built regardless of the trigger decision)
-
-Even though the Dashboard doesn't trigger audits itself, the spec required
-designing (and this phase implements) the smallest portable stale-scan
-recovery mechanism as prerequisite groundwork — genuinely useful today
-for the existing CLI-triggered workflow too, closing the Phase 3.2 known
-limitation outright rather than leaving it purely theoretical.
+<details>
+<summary>Original Phase 7 design (for history)</summary>
 
 **`App\Audit\Projects\StaleScanReclaimer`**: a `Scan` still `running`
 after `config('laradogs.projects.stale_scan_threshold_seconds')` (default
@@ -194,17 +199,7 @@ Meets every requirement given:
 - **Fail-closed** — the reclaimed scan is `failed`, never `completed`; no
   coverage is ever claimed for it.
 
-**Known, accepted trade-off**: age-based classification can misclassify a
-genuinely very slow (but still legitimately running) scan past the
-threshold as stale — there is no heartbeat/PID tracking to distinguish
-the two more precisely without new infrastructure, which this phase
-deliberately does not add.
-
-This mechanism is a prerequisite, not a green light on its own — a
-worker-based async trigger is still not implemented (see above); this
-just means the ONE identified blocker specific to "a scan dies mid-flight
-and blocks the project forever" is now closed for whenever unattended
-triggering (CI, a scheduler, a Git webhook) is eventually built.
+</details>
 
 ## Project registration UI decision
 
@@ -275,19 +270,21 @@ auto-mounts a host directory.
 
 ## Known limitations
 
-- **No Dashboard-triggered audits** — CLI only, see
-  [Audit trigger design](#audit-trigger-design-cli-only-this-phase). A
-  future phase could revisit this once a documented, monitored queue
-  worker process exists.
+- **No Dashboard-triggered audits — resolved in Phase 7.1.4.** See
+  [Audit trigger design](#audit-trigger-design-phase-714-async-queue--scheduler)
+  and [`auditing/audit-execution.md`](auditing/audit-execution.md).
+  (Historical note, Phase 7: this used to be CLI-only, pending a
+  documented, monitored queue worker process — that process now exists.)
 - **Project registration UI is Owner/Admin-only** (Phase 7.1.2, roles
   refined in 7.1.3) — a deliberate policy, since it grants access to
   server-mounted filesystem paths under the configured project root; see
   `docs/self-hosting.md`'s authorization model. CLI registration
   (`laradogs:project:add`) has no such restriction.
-- **Stale-scan reclaim is age-based, not heartbeat-based** — a
-  legitimately very slow scan past the threshold is misclassified as
-  abandoned; no PID/heartbeat tracking exists to do better without new
-  infrastructure.
+- **Stale-scan reclaim is age-based, not heartbeat-based — resolved in
+  Phase 7.1.4** for the `Running` case (a `heartbeat_at` touched between
+  analyzer stages now distinguishes a slow-but-alive scan from a dead
+  worker); see
+  [`auditing/audit-execution.md`](auditing/audit-execution.md#stale-scan-recovery-two-separate-thresholds).
 - **No health score, no charts, no trend lines** — deliberately, per this
   phase's own scope (no formula specified, no historical-comparison
   semantics built yet).

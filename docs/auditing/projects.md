@@ -157,22 +157,21 @@ distinction `laradogs:audit`'s own docs already make).
 ### Concurrency
 
 `laradogs:project:audit` refuses to start a second audit for a project
-that already has a `Scan` with `status = running`:
+that already has an active (`queued` or `running`) `Scan`:
 
 ```
-Another audit for this project is already running (scan 01ABC..., started 2 minutes ago).
+Another audit for this project is already queued or running (scan 01ABC..., started 2 minutes ago).
 ```
 
-This is a deliberately small, **portable, advisory** guard — a plain
-query against existing data, not distributed locking (no Redis/queue
-infrastructure was introduced). It cannot prevent a true race between two
-processes calling the audit at the exact same instant (both could observe
-"no running scan" before either creates one); that residual race is
-bounded by the same database-level protection that already protects
-concurrent Finding ingestion — `findings_project_fingerprint_unique` (see
-`FindingIngestor`). A crashed process can also leave a `Scan` stuck in
-`running` forever — there is no staleness/timeout cleanup for that yet
-(see [Known limitations](#known-limitations)).
+**Updated in Phase 7.1.4**: this is now a real, portable database
+constraint, not an advisory check — see
+[`audit-execution.md`](audit-execution.md#concurrency-a-real-portable-mutex)
+for the full mutex design. It's shared by the CLI, the Dashboard's "Run
+Audit" button, and the scheduler — all three converge on the exact same
+guard, so a manual+manual, manual+scheduled, or scheduled+scheduled race
+can never dispatch two concurrent audits for one project. A crashed
+process no longer leaves a `Scan` stuck forever either — see
+[Stale scan recovery](audit-execution.md#stale-scan-recovery-two-separate-thresholds).
 
 ### What gets persisted, every audit
 
@@ -331,17 +330,11 @@ chooses what to mount, same as before. No Docker socket access was added.
 
 ## Known limitations
 
-- **A crashed/interrupted process can leave a `Scan` stuck in `running`
-  status indefinitely** — no staleness detection/cleanup exists yet (see
-  [Concurrency](#concurrency)). A stuck `running` scan blocks new audits
-  for that project until manually corrected in the database. **This is
-  real operational debt, not a cosmetic gap: it must be resolved before
-  any unattended/automated triggering of audits** — CI automation,
-  scheduled (cron) scans, Git-webhook-triggered scans, or any other
-  unattended operation mode. Manually running `laradogs:project:audit`
-  yourself, where a human notices and can intervene if something hangs,
-  is safe today; an automated scheduler blindly retrying on a schedule is
-  not, until this is addressed.
+- **A crashed/interrupted process leaving a `Scan` stuck — resolved in
+  Phase 7.1.4.** (Historical note: this used to require manual database
+  correction; it's now reclaimed automatically, and unattended/automated
+  triggering — the scheduler — is now implemented. See
+  [`audit-execution.md`](audit-execution.md).)
 - **The `add_unique_constraint_to_projects_path` migration will fail
   loudly (not silently) on an existing installation whose `projects`
   table already contains duplicate `path` values** — the database rejects

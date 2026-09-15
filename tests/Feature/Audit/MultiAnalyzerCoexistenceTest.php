@@ -94,7 +94,7 @@ it('runs both analyzers in one scan and persists Findings from both, independent
     $context = multiAnalyzerContext();
     $project = Project::query()->create(['name' => 'Multi-analyzer fixture', 'path' => $context->projectPath]);
 
-    $scan = makeScanRunnerFor($registry)->run($project, $context);
+    $scan = makeScanRunnerFor($registry)->runForProject($project, $context);
 
     expect($scan->status)->toBe(ScanStatus::Completed);
     expect(ScanAnalyzerExecution::query()->where('scan_id', $scan->id)->count())->toBe(2);
@@ -134,7 +134,7 @@ it('one analyzer failing does not corrupt or block the other analyzer\'s result'
     $context = multiAnalyzerContext();
     $project = Project::query()->create(['name' => 'Multi-analyzer partial-failure fixture', 'path' => $context->projectPath]);
 
-    $scan = makeScanRunnerFor($registry)->run($project, $context);
+    $scan = makeScanRunnerFor($registry)->runForProject($project, $context);
 
     // The scan as a whole still completes (continueOnFailure defaults to
     // true) — an analyzer-level Failed is not the same as a Scan-level

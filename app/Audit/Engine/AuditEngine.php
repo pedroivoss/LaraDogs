@@ -57,19 +57,28 @@ final readonly class AuditEngine
 
     /**
      * Builds a plan and executes it in one call.
+     *
+     * `$onAnalyzerExecuted`, if given, is called with each
+     * {@see AnalyzerExecution} the instant it's produced — Phase 7.1.4's
+     * smallest safe hook for a caller to react to per-analyzer progress
+     * (e.g. touching a Scan's heartbeat) WITHOUT this Engine ever
+     * depending on Eloquent/persistence itself (ADR-0010): the callback
+     * receives only the same plain DTO already returned in
+     * `AuditRunResult.executions`, and this class never inspects what the
+     * callback does with it.
      */
-    public function run(AuditContext $context): AuditRunResult
+    public function run(AuditContext $context, ?callable $onAnalyzerExecuted = null): AuditRunResult
     {
-        return $this->execute($this->plan($context), $context);
+        return $this->execute($this->plan($context), $context, $onAnalyzerExecuted);
     }
 
     /**
      * Executes an already-built plan. The plan must have been built from
      * this same engine's registry — analyzers are looked up by id at
      * execution time, not carried inside the plan itself (see
-     * {@see AuditPlanItem}).
+     * {@see AuditPlanItem}). See {@see run()} for `$onAnalyzerExecuted`.
      */
-    public function execute(AuditPlan $plan, AuditContext $context): AuditRunResult
+    public function execute(AuditPlan $plan, AuditContext $context, ?callable $onAnalyzerExecuted = null): AuditRunResult
     {
         $startedAt = new DateTimeImmutable;
         $clockStart = hrtime(true);
@@ -95,6 +104,10 @@ final readonly class AuditEngine
 
             $execution = $this->runOne($item, $context);
             $executions[] = $execution;
+
+            if ($onAnalyzerExecuted !== null) {
+                $onAnalyzerExecuted($execution);
+            }
 
             if (! $context->settings->continueOnFailure
                 && in_array($execution->status, [ExecutionStatus::Failed, ExecutionStatus::TimedOut], true)) {

@@ -76,7 +76,7 @@ it('runs the full pipeline end-to-end and persists a Scan, ScanAnalyzerExecution
 
         $project = Project::query()->create(['name' => 'Npm E2E Fixture', 'path' => $context->projectPath]);
 
-        $scan = $scanRunner->run($project, $context);
+        $scan = $scanRunner->runForProject($project, $context);
 
         expect($scan->status)->toBe(ScanStatus::Completed);
 

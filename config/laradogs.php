@@ -259,6 +259,35 @@ return [
 
         /*
         |----------------------------------------------------------------
+        | Queued-Scan Stale Threshold (Phase 7.1.4)
+        |----------------------------------------------------------------
+        |
+        | Deliberately SEPARATE from `stale_scan_threshold_seconds` above
+        | — see App\Audit\Projects\StaleScanReclaimer's own docblock for
+        | the full reasoning. A short default (2 minutes): a healthy
+        | queue worker picks up a `Queued` job within seconds, so
+        | anything still `Queued` this long almost certainly means the
+        | worker isn't running at all, not that it's merely busy.
+        |
+        */
+        'queued_scan_stale_threshold_seconds' => (int) env('LARADOGS_QUEUED_SCAN_STALE_THRESHOLD_SECONDS', 120),
+
+        /*
+        |----------------------------------------------------------------
+        | Scheduled Audit Time (Phase 7.1.4)
+        |----------------------------------------------------------------
+        |
+        | The single instance-wide time-of-day (HH:MM, in
+        | `config('app.timezone')`) every project's Daily/Weekly/Monthly
+        | schedule runs at — see App\Audit\Projects\ProjectAuditScheduler's
+        | own docblock for why this is intentionally NOT per-project in
+        | V1 (arbitrary per-project times were explicitly out of scope).
+        |
+        */
+        'scheduled_audit_time' => (string) env('LARADOGS_SCHEDULED_AUDIT_TIME', '02:00'),
+
+        /*
+        |----------------------------------------------------------------
         | Project Root (Phase 7.1.2)
         |----------------------------------------------------------------
         |

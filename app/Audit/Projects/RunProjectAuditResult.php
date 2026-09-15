@@ -14,14 +14,19 @@ final readonly class RunProjectAuditResult
         public ?DiscoveryResult $discoveryFailure,
     ) {}
 
+    public static function queued(Scan $scan): self
+    {
+        return new self(RunProjectAuditOutcome::Queued, $scan, null, null);
+    }
+
     public static function completed(Scan $scan): self
     {
         return new self(RunProjectAuditOutcome::Completed, $scan, null, null);
     }
 
-    public static function alreadyRunning(Scan $runningScan): self
+    public static function alreadyRunning(Scan $conflictingScan): self
     {
-        return new self(RunProjectAuditOutcome::AlreadyRunning, null, $runningScan, null);
+        return new self(RunProjectAuditOutcome::AlreadyRunning, null, $conflictingScan, null);
     }
 
     public static function pathUnavailable(DiscoveryResult $discoveryFailure): self
@@ -31,6 +36,6 @@ final readonly class RunProjectAuditResult
 
     public function succeeded(): bool
     {
-        return $this->outcome === RunProjectAuditOutcome::Completed;
+        return in_array($this->outcome, [RunProjectAuditOutcome::Queued, RunProjectAuditOutcome::Completed], true);
     }
 }

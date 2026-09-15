@@ -2,12 +2,15 @@
 
 namespace App\Models\Audit;
 
+use App\Audit\Projects\AuditSchedule;
 use App\Audit\Projects\Query\ProjectListQuery;
 use App\Audit\Projects\RegisterProject;
+use App\Audit\Projects\RunProjectAudit;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Carbon;
 
 /**
  * Something auditable registered with LaraDogs. Persistence only for now —
@@ -23,6 +26,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property string $public_id
  * @property string $name
  * @property string $path
+ * @property AuditSchedule $audit_schedule
+ * @property int|null $audit_schedule_day_of_week
+ * @property int|null $audit_schedule_day_of_month
+ * @property Carbon|null $next_audit_at
+ * @property Carbon|null $last_scheduled_audit_at
  * @property-read Scan|null $latestScan
  * @property-read int $open_findings_count only present when loaded via
  *                `withCount(['findings as open_findings_count' => ...])`
@@ -32,7 +40,16 @@ final class Project extends Model
 {
     use HasUlids;
 
-    protected $fillable = ['name', 'path'];
+    protected $fillable = [
+        'name', 'path', 'audit_schedule', 'audit_schedule_day_of_week',
+        'audit_schedule_day_of_month', 'next_audit_at', 'last_scheduled_audit_at',
+    ];
+
+    protected $casts = [
+        'audit_schedule' => AuditSchedule::class,
+        'next_audit_at' => 'datetime',
+        'last_scheduled_audit_at' => 'datetime',
+    ];
 
     /**
      * @return list<string>
@@ -70,5 +87,20 @@ final class Project extends Model
     public function findings(): HasMany
     {
         return $this->hasMany(Finding::class);
+    }
+
+    /**
+     * The project's current `Queued`/`Running` scan, if any — backed by
+     * the `project_active_scans` mutex row (Phase 7.1.4), not a status
+     * query against `scans` directly, so this is always consistent with
+     * {@see RunProjectAudit}'s own concurrency guard.
+     * A plain lookup rather than an Eloquent relation: the mutex table's
+     * FK points AT `scans`, the reverse shape `hasOneThrough()` expects.
+     */
+    public function activeScan(): ?Scan
+    {
+        $active = ProjectActiveScan::query()->find($this->id);
+
+        return $active === null ? null : Scan::query()->find($active->scan_id);
     }
 }

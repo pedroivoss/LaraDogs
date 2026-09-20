@@ -180,6 +180,6 @@ it('computes an efficient project summary: totals, open breakdown by severity/ca
         ->and($summary->openFindingsBySeverity)->toBe(['high' => 1, 'critical' => 1, 'low' => 1])
         ->and($summary->openFindingsByCategory['security'])->toBe(1)
         ->and($summary->openFindingsByCategory['dependency'])->toBe(1)
-        ->and($summary->lastScanAnalyzerStatuses)->toBe(['composer-security' => 'passed'])
+        ->and($summary->lastCompletedScanAnalyzerStatuses)->toBe(['composer-security' => 'passed'])
         ->and($summary->lastScan->id)->toBe($scan->id);
 });

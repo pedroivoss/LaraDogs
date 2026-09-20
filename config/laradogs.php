@@ -145,9 +145,10 @@ return [
     |      ExecutionStatus::TimedOut (fail-closed: no findings trusted, no
     |      coverage claimed — see `docs/auditing/analyzers/semgrep.md`).
     |
-    | `timeout_seconds`'s default (1200s = 20 minutes) is NOT arbitrary —
-    | it is calibrated from a real measurement (Phase 6 real-world
-    | validation, 2026-09-08): a real, production-sized Laravel application
+    | `timeout_seconds`'s default (1800s = 30 minutes; originally 1200s, see
+    | below) is NOT arbitrary — it is calibrated from a real measurement
+    | (Phase 6 real-world validation, 2026-09-08): a real, production-sized
+    | Laravel application
     | (908 first-party PHP/Blade files after LaraDogs' own vendor/
     | node_modules/storage/etc. exclusions) took ~767-784 seconds
     | (~0.86s/file) for a full scan with the entire bundled ruleset —

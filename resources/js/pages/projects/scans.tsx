@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { DataPagination } from '@/components/audit/data-pagination';
+import { OriginBadge } from '@/components/audit/origin-badge';
 import {
     Table,
     TableBody,
@@ -15,11 +16,13 @@ import {
     scans as projectScansRoute,
     show as projectShow,
 } from '@/routes/projects';
-import type { Pagination, ScanStatus } from '@/types/audit';
+import type { Pagination, ScanOrigin, ScanStatus } from '@/types/audit';
 
 type ScanListItem = {
     id: string;
     status: ScanStatus;
+    origin: ScanOrigin;
+    origin_label: string;
     started_at: string;
     finished_at: string | null;
     duration_ms: number | null;
@@ -31,6 +34,7 @@ type ScanListItem = {
 };
 
 const STATUS_STYLE: Record<ScanStatus, string> = {
+    queued: 'text-muted-foreground',
     running: 'text-blue-600 dark:text-blue-400',
     completed: 'text-emerald-600 dark:text-emerald-400',
     failed: 'text-red-600 dark:text-red-400',
@@ -73,6 +77,7 @@ export default function ProjectScans({
                                         <TableHead>Finished</TableHead>
                                         <TableHead>Duration</TableHead>
                                         <TableHead>Status</TableHead>
+                                        <TableHead>Origin</TableHead>
                                         <TableHead>Findings observed</TableHead>
                                         <TableHead>Auto-resolved</TableHead>
                                     </TableRow>
@@ -109,6 +114,11 @@ export default function ProjectScans({
                                                 className={`font-medium ${STATUS_STYLE[scan.status]}`}
                                             >
                                                 {scan.status}
+                                            </TableCell>
+                                            <TableCell>
+                                                <OriginBadge
+                                                    label={scan.origin_label}
+                                                />
                                             </TableCell>
                                             <TableCell>
                                                 {scan.findings_summary

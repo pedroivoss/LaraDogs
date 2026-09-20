@@ -61,6 +61,8 @@ final class ProjectScansController extends Controller
             'scan' => [
                 'id' => $scan->public_id,
                 'status' => $scan->status->value,
+                'origin' => $scan->origin->value,
+                'origin_label' => $scan->origin->label(),
                 'started_at' => $scan->started_at->toIso8601String(),
                 'finished_at' => $scan->finished_at?->toIso8601String(),
                 'duration_ms' => $scan->duration_ms,
@@ -83,6 +85,8 @@ final class ProjectScansController extends Controller
         return [
             'id' => $scan->public_id,
             'status' => $scan->status->value,
+            'origin' => $scan->origin->value,
+            'origin_label' => $scan->origin->label(),
             'started_at' => $scan->started_at->toIso8601String(),
             'finished_at' => $scan->finished_at?->toIso8601String(),
             'duration_ms' => $scan->duration_ms,

@@ -162,6 +162,31 @@ UI itself:
   every role) configures the optional per-project schedule — see
   [`auditing/audit-execution.md`](auditing/audit-execution.md#scheduling).
 
+## Active scan vs. historical context (Phase 7.1.4.1)
+
+Project Detail keeps two things apart that must never be one object:
+
+- the **active scan** (`Queued`/`Running`, `Project::activeScan()`) — the
+  "Audit" card, with elapsed time; and
+- the **historical context** — `ProjectSummaryQuery`, from **terminal**
+  scans only: the latest audit (`Completed` or `Failed`), the latest
+  _completed_ audit (the only source of analyzer status — executions are
+  persisted when a scan completes, so a `Failed` scan has none), and the
+  newest non-empty project-profile snapshot.
+
+While an audit is queued/running, the analyzer card therefore still shows
+the previous completed audit's results, labeled "latest completed audit"
+with a note that it is not the audit in progress. "This project has not
+been scanned yet" appears only when there is no scan at all; the first
+audit of a project shows "No completed audit yet…", and a project whose
+only audit failed says so and that this is not a clean result. No
+per-analyzer progress is shown for a running audit because none is
+persisted until it completes — nothing is faked.
+
+Scan History and Scan Detail show the scan's **origin** (Manual /
+Scheduled / CLI) as a neutral badge. It is provenance only: the user who
+started a scan is never displayed.
+
 ## Stale-running-scan decision (superseded)
 
 Phase 7's original age-based, single-threshold reclaimer (documented

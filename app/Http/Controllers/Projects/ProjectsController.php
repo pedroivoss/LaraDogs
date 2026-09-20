@@ -18,9 +18,10 @@ use Inertia\Response;
 
 /**
  * Thin adapter over the existing project/query/summary layer — no audit
- * logic, no direct Eloquent business queries beyond eager-loading the
- * Project model's own already-defined `latestScan` relation for the
- * analyzer-execution detail the summary DTO doesn't itself carry.
+ * logic and no direct Eloquent business queries: the active scan
+ * (`Project::activeScan()`) and the historical context
+ * (`ProjectSummaryQuery`, terminal scans only) are deliberately separate
+ * inputs, never one "latest scan" object standing in for both.
  */
 final class ProjectsController extends Controller
 {
@@ -41,7 +42,6 @@ final class ProjectsController extends Controller
         CurrentFindingsQuery $findingsQuery,
     ): Response {
         $summary = $summaryQuery->forProject($project);
-        $latestScan = $project->latestScan()->with('analyzerExecutions')->first();
         $recentScans = $scanHistoryQuery->recentFor($project, limit: 5);
         $recentFindings = $findingsQuery->paginateForProject($project, perPage: 10);
         $activeScan = $project->activeScan();
@@ -53,9 +53,14 @@ final class ProjectsController extends Controller
                 'name' => $project->name,
                 'path' => $project->path,
             ],
-            'profile' => $latestScan?->project_profile,
+            // Historical context (Phase 7.1.4.1): always from TERMINAL scans
+            // via ProjectSummaryQuery — never from the active scan below,
+            // which has no executions yet and (while Queued) only a
+            // placeholder profile.
+            'profile' => $summary->profile,
             'summary' => $this->summaryToArray($summary),
-            'analyzer_executions' => $latestScan?->analyzerExecutions->map($this->executionToArray(...))->all() ?? [],
+            'analyzer_scan' => $summary->lastCompletedScan === null ? null : $this->scanToArray($summary->lastCompletedScan),
+            'analyzer_executions' => $summary->lastCompletedScan?->analyzerExecutions->map($this->executionToArray(...))->all() ?? [],
             'recent_scans' => $recentScans->map($this->scanToArray(...))->all(),
             'recent_findings' => $recentFindings->getCollection()->map($this->findingToArray(...))->all(),
             'audit_command' => "docker compose exec app php artisan laradogs:project:audit {$project->public_id}",
@@ -104,7 +109,7 @@ final class ProjectsController extends Controller
             'open_findings' => $summary->openFindings,
             'open_findings_by_severity' => $summary->openFindingsBySeverity,
             'open_findings_by_category' => $summary->openFindingsByCategory,
-            'last_scan_analyzer_statuses' => $summary->lastScanAnalyzerStatuses,
+            'last_completed_scan_analyzer_statuses' => $summary->lastCompletedScanAnalyzerStatuses,
             'last_scan' => $summary->lastScan === null ? null : $this->scanToArray($summary->lastScan),
         ];
     }

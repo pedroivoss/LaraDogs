@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { AnalyzerStatusBadge } from '@/components/audit/analyzer-status-badge';
 import { CoverageBadge } from '@/components/audit/coverage-badge';
+import { OriginBadge } from '@/components/audit/origin-badge';
 import { SeverityBadge } from '@/components/audit/severity-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { dashboard } from '@/routes';
@@ -13,12 +14,15 @@ import {
 import type {
     AnalyzerExecutionSummary,
     FindingSummary,
+    ScanOrigin,
     ScanStatus,
 } from '@/types/audit';
 
 type ScanDetail = {
     id: string;
     status: ScanStatus;
+    origin: ScanOrigin;
+    origin_label: string;
     started_at: string;
     finished_at: string | null;
     duration_ms: number | null;
@@ -57,8 +61,18 @@ export default function ScanDetail({
                     </p>
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                     <Stat label="Status" value={scan.status} />
+                    <Card>
+                        <CardContent className="pt-6">
+                            <div className="flex h-7 items-center">
+                                <OriginBadge label={scan.origin_label} />
+                            </div>
+                            <p className="text-muted-foreground text-xs">
+                                Origin
+                            </p>
+                        </CardContent>
+                    </Card>
                     <Stat
                         label="Started"
                         value={new Date(scan.started_at).toLocaleString()}

@@ -75,6 +75,17 @@ analyzer execution) — the Engine itself never depends on Eloquent
 (ADR-0010); the heartbeat-writing happens one layer up, in `ScanRunner`,
 which already depends on the Findings/persistence layer.
 
+### Active scan vs. historical context
+
+A `Queued`/`Running` scan is _never_ used as the source of a project's
+historical context (analyzer status, profile snapshot, "last audit"): it
+has no executions yet and, while `Queued`, only an empty placeholder
+profile. Those come from terminal scans (`Completed`/`Failed`) via
+`ProjectSummaryQuery` — see
+[`../dashboard.md`](../dashboard.md#active-scan-vs-historical-context-phase-7141).
+The project _list_ ("Last scan") intentionally still shows the newest scan
+of any status, so an in-progress audit is visible there.
+
 ## Concurrency: a real, portable mutex
 
 **A project can never have two active scans at once** — manual+manual,

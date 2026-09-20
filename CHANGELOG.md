@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 7.1.4.1: Post-Deployment UX Corrections
+
+Two non-blocking defects found during the real Phase 7.1.4 deployment/UAT.
+
+### Fixed
+
+- **Project Detail no longer loses its historical context while an audit
+  is Queued/Running.** An active scan was being used as "the latest scan",
+  so a project with history briefly showed "This project has not been
+  scanned yet" and lost its "Laravel x · PHP y" line (a Queued scan has no
+  analyzer executions and only a placeholder profile). `ProjectSummaryQuery`
+  now selects historical context from TERMINAL scans only
+  (`Completed`/`Failed`): `lastScan` (newest terminal), `lastCompletedScan`
+  (the only analyzer-status source) and `profile` (newest non-empty
+  snapshot). The active scan stays a separate concept
+  (`Project::activeScan()`). The Analyzer status card is now titled and
+  worded for what it is — "latest completed audit", with a note that it is
+  not the audit in progress — and a failed latest audit is never presented
+  as clean. The polling reload now also refreshes `profile` (it previously
+  did not).
+- `scans` history no longer renders an undefined style class for a
+  `queued` row (`ScanStatus` in the front-end types gained `queued`).
+
+### Added
+
+- **Origin** (Manual / Scheduled / CLI) in Scan History and Scan Detail,
+  as a neutral badge (provenance, not a status/severity signal). The label
+  comes from the new `ScanOrigin::label()`. The initiating user is still
+  never exposed (Owner privacy, Phase 7.1.3).
+
+### Changed
+
+- `ProjectSummary::$lastScanAnalyzerStatuses` was renamed
+  `lastCompletedScanAnalyzerStatuses` (and gained `lastCompletedScan` /
+  `profile`); the Project Detail prop `last_scan_analyzer_statuses` became
+  `last_completed_scan_analyzer_statuses`, and `analyzer_scan` was added.
+- Comment-only: `config/laradogs.php` documented the Semgrep default as
+  1200s; the real default (unchanged) is 1800s.
+
 ## [Unreleased] — Phase 7.1.4: Audit Execution & Scheduling
 
 Asynchronous audit execution (a Dashboard "Run Audit" button, a queue

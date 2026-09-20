@@ -23,7 +23,9 @@ export type FindingStatus =
     | 'false_positive'
     | 'ignored';
 
-export type ScanStatus = 'running' | 'completed' | 'failed';
+export type ScanStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+export type ScanOrigin = 'manual' | 'scheduled' | 'cli';
 
 export type AnalyzerCategory =
     | 'security'

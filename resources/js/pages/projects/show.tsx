@@ -53,7 +53,7 @@ type Summary = {
     open_findings: number;
     open_findings_by_severity: Record<string, number>;
     open_findings_by_category: Record<string, number>;
-    last_scan_analyzer_statuses: Record<string, string>;
+    last_completed_scan_analyzer_statuses: Record<string, string>;
     last_scan: ScanSummary | null;
 };
 
@@ -86,6 +86,7 @@ export default function ProjectShow({
     project,
     profile,
     summary,
+    analyzer_scan,
     analyzer_executions,
     recent_scans,
     recent_findings,
@@ -97,6 +98,7 @@ export default function ProjectShow({
     project: { id: string; name: string; path: string };
     profile: ProjectProfile | null;
     summary: Summary;
+    analyzer_scan: ScanSummary | null;
     analyzer_executions: AnalyzerExecutionSummary[];
     recent_scans: ScanSummary[];
     recent_findings: FindingSummary[];
@@ -119,7 +121,9 @@ export default function ProjectShow({
         {
             only: [
                 'active_scan',
+                'profile',
                 'summary',
+                'analyzer_scan',
                 'analyzer_executions',
                 'recent_scans',
                 'recent_findings',
@@ -186,15 +190,27 @@ export default function ProjectShow({
                     </CardHeader>
                     <CardContent className="space-y-3">
                         {active_scan ? (
-                            <p className="text-muted-foreground text-sm">
-                                Audit {active_scan.status} —{' '}
-                                <ElapsedTime
-                                    since={
-                                        active_scan.running_at ??
-                                        active_scan.started_at
-                                    }
-                                />
-                            </p>
+                            <div className="space-y-1">
+                                <p className="text-muted-foreground text-sm">
+                                    Audit {active_scan.status} —{' '}
+                                    <ElapsedTime
+                                        since={
+                                            active_scan.running_at ??
+                                            active_scan.started_at
+                                        }
+                                    />
+                                </p>
+                                {summary.last_scan && (
+                                    <p className="text-muted-foreground text-xs">
+                                        Latest audit:{' '}
+                                        {new Date(
+                                            summary.last_scan.finished_at ??
+                                                summary.last_scan.started_at,
+                                        ).toLocaleString()}{' '}
+                                        · {summary.last_scan.status}
+                                    </p>
+                                )}
+                            </div>
                         ) : canManageAudits ? (
                             <Button
                                 onClick={runAudit}
@@ -258,13 +274,38 @@ export default function ProjectShow({
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-sm">
-                            Analyzer status (latest scan)
+                            Analyzer status (latest completed audit)
                         </CardTitle>
+                        {analyzer_scan && (
+                            <p className="text-muted-foreground text-xs">
+                                Completed{' '}
+                                {new Date(
+                                    analyzer_scan.finished_at ??
+                                        analyzer_scan.started_at,
+                                ).toLocaleString()}
+                                {active_scan &&
+                                    ' — not the audit currently in progress.'}
+                            </p>
+                        )}
+                        {analyzer_scan &&
+                            summary.last_scan?.status === 'failed' &&
+                            summary.last_scan.id !== analyzer_scan.id && (
+                                <p className="text-muted-foreground text-xs">
+                                    The most recent audit failed; these results
+                                    are from the latest completed audit.
+                                </p>
+                            )}
                     </CardHeader>
                     <CardContent>
                         {analyzer_executions.length === 0 ? (
                             <p className="text-muted-foreground text-sm">
-                                This project has not been scanned yet.
+                                {analyzer_scan
+                                    ? 'The latest completed audit recorded no analyzer executions.'
+                                    : active_scan
+                                      ? 'No completed audit yet. Analyzer results will appear once the current audit finishes.'
+                                      : summary.last_scan
+                                        ? 'The last audit failed, so no analyzer results were recorded. This is not a clean result.'
+                                        : 'This project has not been scanned yet.'}
                             </p>
                         ) : (
                             <div className="divide-y">

@@ -86,6 +86,15 @@ profile. Those come from terminal scans (`Completed`/`Failed`) via
 The project _list_ ("Last scan") intentionally still shows the newest scan
 of any status, so an in-progress audit is visible there.
 
+### Quality Gate hook
+
+When a scan reaches `Completed` or `Failed`, `ScanRecorder` dispatches a
+`ScanFinished` event after the mutex is released; the Quality Gate
+listener evaluates the project's enabled policy (see
+[`../quality-gates/README.md`](../quality-gates/README.md#when-it-runs)).
+It is the same path for CLI, worker and scheduled audits, runs outside any
+analyzer/ingestion transaction, and can never fail the scan.
+
 ## Concurrency: a real, portable mutex
 
 **A project can never have two active scans at once** — manual+manual,

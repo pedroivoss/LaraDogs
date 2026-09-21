@@ -5,6 +5,7 @@ use App\Http\Controllers\FindingsController;
 use App\Http\Controllers\Projects\ProjectAuditController;
 use App\Http\Controllers\Projects\ProjectAuditScheduleController;
 use App\Http\Controllers\Projects\ProjectFindingsController;
+use App\Http\Controllers\Projects\ProjectQualityGateController;
 use App\Http\Controllers\Projects\ProjectRegistrationController;
 use App\Http\Controllers\Projects\ProjectScansController;
 use App\Http\Controllers\Projects\ProjectsController;
@@ -40,6 +41,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('projects.audits.store');
         Route::put('projects/{project:public_id}/audit-schedule', [ProjectAuditScheduleController::class, 'update'])
             ->name('projects.audit-schedule.update');
+        // Quality Gate policy (Phase 8): Owner/Admin mutate; every role reads it on Project Detail.
+        Route::put('projects/{project:public_id}/quality-gate', [ProjectQualityGateController::class, 'update'])
+            ->name('projects.quality-gate.update');
     });
 
     Route::get('findings/{finding:public_id}', [FindingsController::class, 'show'])->name('findings.show');

@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * One immutable audit run against a Project — never edited/reused to
@@ -98,5 +99,17 @@ final class Scan extends Model
     public function occurrences(): HasMany
     {
         return $this->hasMany(FindingOccurrence::class);
+    }
+
+    /**
+     * The scan's immutable Quality Gate result (Phase 8), absent when no
+     * gate was enabled at evaluation time or the scan pre-dates the
+     * feature — never a fabricated "Passed".
+     *
+     * @return HasOne<QualityGateResult, $this>
+     */
+    public function qualityGateResult(): HasOne
+    {
+        return $this->hasOne(QualityGateResult::class);
     }
 }

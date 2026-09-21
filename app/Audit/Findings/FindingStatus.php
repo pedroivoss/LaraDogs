@@ -47,6 +47,37 @@ enum FindingStatus: string
     }
 
     /**
+     * THE central eligibility rule for Quality Gates (Phase 8): whether a
+     * finding in this status counts as a CURRENT violation.
+     *
+     * - `Open`, `Confirmed` — count (a real or presumed-real, unresolved issue).
+     * - `Resolved` — does not count (no longer detected by a reliably-run analyzer).
+     * - `AcceptedRisk` — does NOT count in V1: an operator deliberately
+     *   accepted it, with a recorded reason. It is preserved untouched in
+     *   the data; a future policy option could count it again.
+     * - `FalsePositive`, `Ignored` — do not count (not a real issue /
+     *   deliberately excluded, each with a recorded reason).
+     *
+     * Every gate rule that asks "does this finding count?" must go through
+     * here — never re-list statuses elsewhere.
+     */
+    public function countsTowardQualityGate(): bool
+    {
+        return match ($this) {
+            self::Open, self::Confirmed => true,
+            self::Resolved, self::AcceptedRisk, self::FalsePositive, self::Ignored => false,
+        };
+    }
+
+    /**
+     * @return list<self>
+     */
+    public static function qualityGateEligible(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $status): bool => $status->countsTowardQualityGate()));
+    }
+
+    /**
      * Suppressed statuses are deliberate human (or automated policy, in
      * the future) decisions to stop caring about a finding. Re-observing
      * a suppressed finding in a later scan must NOT automatically flip its

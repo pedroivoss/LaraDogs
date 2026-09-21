@@ -116,3 +116,37 @@ export type FindingFilterState = {
     analyzer_id: string | null;
     rule_id: string | null;
 };
+
+/** Quality Gate (Phase 8): a policy result, separate from scan status. */
+export type GateOutcome = 'passed' | 'failed' | 'indeterminate';
+
+export type GateSummary = {
+    outcome: GateOutcome;
+    label: string;
+    policy_revision: number;
+    rules_total: number;
+    rules_failed: number;
+    rules_indeterminate: number;
+    headline?: string | null;
+};
+
+export type GateRuleResult = {
+    rule_id: string;
+    subject: string | null;
+    outcome: GateOutcome;
+    label: string;
+    summary: string;
+    observed: string | null;
+    expected: string | null;
+    analyzer_id: string | null;
+    severity: string | null;
+    finding_count: number;
+    finding_ids: string[];
+};
+
+export type GateDetail = GateSummary & {
+    evaluated_at: string;
+    baseline_scan_id: string | null;
+    policy: unknown;
+    rules: GateRuleResult[];
+};

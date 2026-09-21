@@ -6,6 +6,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 8: Quality Gates & Policy Engine
+
+An optional per-project policy layer that judges each finished scan as
+**Passed / Failed / Indeterminate** — a policy result, not a security
+score. See [`docs/quality-gates/README.md`](docs/quality-gates/README.md).
+
+### Added
+
+- **Quality Gate policy** (`project_quality_gates`): disabled by default,
+  no row = no gate; a versioned, bounded JSON document parsed only through
+  typed value objects (no expressions, no executable content). Every
+  effective change increments `revision` (row-locked; saving an unchanged
+  policy does not).
+- **Immutable per-scan results** (`quality_gate_results`,
+  `quality_gate_rule_results`): outcome, policy revision + snapshot,
+  baseline scan, and one row per rule/subject with a short summary,
+  observed/expected values and a bounded list of finding public ids. One
+  result per scan (unique `scan_id`); none for disabled gates and none
+  invented for pre-Phase-8 scans.
+- **Rule catalog** (stable ids): `laradogs.gate.max-open-findings`,
+  `laradogs.gate.no-new-severity`, `laradogs.gate.analyzer-status`,
+  `laradogs.gate.analyzer-coverage`.
+- **`QualityGateEvaluator`**: pure and deterministic. Failed > Indeterminate
+    > Passed; conclusions resting on the absence of findings are only Passed
+    > when the audit is trustworthy (scan completed, no analyzer Failed /
+    > TimedOut / Unavailable / Skipped). Baseline = the previous Completed scan;
+    > "new" uses the existing Finding fingerprint identity; a regression is
+    > comparison metadata (no `REGRESSED` status).
+- **`ScanFinished` event** dispatched by `ScanRecorder` on Completed/Failed;
+  the listener evaluates the enabled policy — the single path for CLI,
+  Dashboard/queue worker and scheduled audits. Errors are reported and
+  swallowed (never break a finished scan).
+- **`Severity::rank()` / `isAtOrAbove()`** — the single trusted ordering
+  (`Unknown` has no rank and meets every threshold, fail closed) — and
+  **`FindingStatus::countsTowardQualityGate()`** — the single eligibility
+  rule (open/confirmed count; resolved, accepted-risk, false-positive,
+  ignored do not).
+- **Dashboard**: a Quality Gate card on Project Detail (Owner/Admin edit
+  with structured controls; User read-only; `PUT
+/projects/{project}/quality-gate` is staff-only), a Gate column in Scan
+  History, and the full historical result on Scan Detail. Status is shown
+  with icon + text (Indeterminate also has a dashed border), never by colour
+  alone.
+- **`laradogs:project:gate {project} [--scan=] [--json]`** — reads the
+  immutable result; exit codes `0` passed, `1` failed, `2` indeterminate,
+  `3` operational error, `4` not evaluated (V1 contract for future CI).
+  `laradogs:project:audit` also prints the gate outcome / a `quality_gate`
+  JSON key; its own exit code is unchanged.
+
+### Changed
+
+- `ScanHistoryQuery` eager-loads each scan's gate result (no per-scan
+  query).
+- Test suite: an order-sensitive assertion in `QueryServicesTest` (found
+  only when running on MySQL) is now order-independent.
+
 ## [Unreleased] — Phase 7.1.4.1: Post-Deployment UX Corrections
 
 Two non-blocking defects found during the real Phase 7.1.4 deployment/UAT.

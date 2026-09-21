@@ -217,6 +217,15 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   remains fully supported for both, for scripted/debugging use. See
   [`docs/dashboard.md`](docs/dashboard.md) and
   [`docs/auditing/audit-execution.md`](docs/auditing/audit-execution.md).
+- **Quality Gates (Phase 8)** — an optional, per-project policy that
+  judges each finished scan as **Passed / Failed / Indeterminate**
+  (Indeterminate = not enough trustworthy evidence; fail closed), with
+  stable rule types (maximum open findings per severity, no new findings at
+  or above a severity, required analyzer status, required analyzer
+  coverage), versioned policies, immutable per-scan results, Dashboard
+  surfaces and `laradogs:project:gate` with documented exit codes for
+  future CI. It is a policy result, not a security score. See
+  [`docs/quality-gates/README.md`](docs/quality-gates/README.md).
 - A Laravel 13 application with React + Inertia (official starter kit)
   and Fortify-based authentication (Phase 0), now serving the real
   Dashboard above (Phase 7) instead of the starter kit's original
@@ -467,7 +476,8 @@ Phase 0 (bootstrap), Phase 1 (Project Discovery), Phase 2 (Audit Engine
 Foundation), Phase 3 (Finding Domain + Persistence, including its 3.1
 Safe-Finding-Resolution-Coverage and 3.2 Persistent-Project-Audit-Workflow
 sub-phases), and Phase 7 (Dashboard, plus its 7.1.1–7.1.4 self-hosting/
-authorization/async-execution sub-phases) are complete. Phase 4
+authorization/async-execution sub-phases), and Phase 8 (Quality Gates &
+Policy Engine) are complete. Phase 4
 (Security/Dependency Scanners) is in progress — `composer audit`,
 `npm audit`, and Semgrep (foundation + a first Laravel-aware ruleset, 12
 rules) are done (tracked in commit history/ADR notes as sub-phases

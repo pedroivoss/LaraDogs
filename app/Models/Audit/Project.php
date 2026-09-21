@@ -103,4 +103,15 @@ final class Project extends Model
 
         return $active === null ? null : Scan::query()->find($active->scan_id);
     }
+
+    /**
+     * The project's Quality Gate POLICY row (Phase 8), if one was ever
+     * saved. No row means no gate — disabled.
+     *
+     * @return HasOne<ProjectQualityGate, $this>
+     */
+    public function qualityGate(): HasOne
+    {
+        return $this->hasOne(ProjectQualityGate::class);
+    }
 }

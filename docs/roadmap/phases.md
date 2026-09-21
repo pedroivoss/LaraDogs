@@ -187,10 +187,32 @@ shipped, each documented in full under `../self-hosting.md`,
   two new Docker services (`worker`, `scheduler`). See
   [`../auditing/audit-execution.md`](../auditing/audit-execution.md).
 
-## Phase 8 — History / Comparison / Quality Gates
+## Phase 8 — Quality Gates & Policy Engine ✅ Complete
 
-NEW/RESOLVED/UNCHANGED/REGRESSED comparison between scans; quality gates
-(fail a build/PR if new CRITICAL findings appear, etc.).
+_(Originally listed as "History / Comparison / Quality Gates"; retitled
+when the phase was scoped. The other phases keep their numbers.)_
+
+A per-project, optional (disabled by default) **policy layer** that judges
+a finished scan: **Passed / Failed / Indeterminate**, where Indeterminate
+means "not enough trustworthy evidence" (fail closed — absence of evidence
+is not evidence of absence). Four stable rule types
+(`max-open-findings`, `no-new-severity`, `analyzer-status`,
+`analyzer-coverage`), versioned policies with a revision + snapshot stored
+on every immutable per-scan result, coverage-aware "new/regressed"
+detection against a deterministic baseline (previous Completed scan, using
+the existing Finding fingerprint identity), one evaluation path for CLI /
+Dashboard / scheduled audits, a Dashboard card + Scan History/Detail
+surfaces, and `laradogs:project:gate` with a documented exit-code contract
+(`0` passed, `1` failed, `2` indeterminate, `3` error, `4` not evaluated)
+for future CI. It is a policy result, **not** a security score, and it
+never changes findings or their lifecycle. See
+[`../quality-gates/README.md`](../quality-gates/README.md).
+
+**Deliberately not part of this phase** (still open): a dedicated
+scan-to-scan comparison **report** (NEW/RESOLVED/UNCHANGED/REGRESSED view),
+re-evaluating an existing scan against a new policy, "count accepted
+risks" as a policy option, per-analyzer scoping of count rules, and a
+Dashboard-home "projects failing" widget.
 
 ## Phase 9 — MCP
 

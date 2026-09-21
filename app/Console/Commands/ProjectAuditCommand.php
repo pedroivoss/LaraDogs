@@ -6,6 +6,7 @@ use App\Audit\Projects\RunProjectAudit;
 use App\Audit\Projects\RunProjectAuditOutcome;
 use App\Models\Audit\FindingOccurrence;
 use App\Models\Audit\Project;
+use App\Models\Audit\QualityGateResult;
 use App\Models\Audit\Scan;
 use App\Models\Audit\ScanAnalyzerExecution;
 use Illuminate\Console\Command;
@@ -73,6 +74,10 @@ final class ProjectAuditCommand extends Command
     {
         $executions = ScanAnalyzerExecution::query()->where('scan_id', $scan->id)->get();
         $occurrences = FindingOccurrence::query()->where('scan_id', $scan->id)->with('finding')->get();
+        // Quality Gate (Phase 8): informational here — this command's own
+        // exit code is unchanged (0 when the audit completed). Use
+        // `laradogs:project:gate` for a gate-aware exit code.
+        $gate = QualityGateResult::query()->where('scan_id', $scan->id)->first();
 
         if ((bool) $this->option('json')) {
             $this->line((string) json_encode(
@@ -80,6 +85,12 @@ final class ProjectAuditCommand extends Command
                     'succeeded' => true,
                     'scan' => $this->scanToArray($scan),
                     'analyzer_executions' => $executions->map($this->executionToArray(...))->all(),
+                    'quality_gate' => $gate === null ? null : [
+                        'outcome' => $gate->outcome->value,
+                        'policy_revision' => $gate->policy_revision,
+                        'rules_failed' => $gate->rules_failed,
+                        'rules_indeterminate' => $gate->rules_indeterminate,
+                    ],
                     'findings' => $occurrences->map($this->occurrenceToArray(...))->all(),
                 ],
                 JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
@@ -90,6 +101,11 @@ final class ProjectAuditCommand extends Command
 
         $this->components->info("Scan {$scan->public_id} for {$project->name}: {$scan->status->value}");
         $this->line("Duration: {$scan->duration_ms}ms");
+
+        if ($gate !== null) {
+            $this->line("Quality Gate: {$gate->outcome->label()} (policy revision {$gate->policy_revision}) — see `laradogs:project:gate {$project->public_id}`");
+        }
+
         $this->newLine();
 
         foreach ($executions as $execution) {

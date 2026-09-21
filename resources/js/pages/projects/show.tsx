@@ -5,6 +5,8 @@ import { AnalyzerStatusBadge } from '@/components/audit/analyzer-status-badge';
 import { CoverageBadge } from '@/components/audit/coverage-badge';
 import { EmptyState } from '@/components/audit/empty-state';
 import { FindingStatusBadge } from '@/components/audit/finding-status-badge';
+import { QualityGateCard } from '@/components/audit/quality-gate-card';
+import type { QualityGateProps } from '@/components/audit/quality-gate-card';
 import { SeverityBadge } from '@/components/audit/severity-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -93,6 +95,7 @@ export default function ProjectShow({
     audit_command,
     active_scan,
     schedule,
+    quality_gate,
     can_manage_audits: canManageAudits,
 }: {
     project: { id: string; name: string; path: string };
@@ -105,6 +108,7 @@ export default function ProjectShow({
     audit_command: string;
     active_scan: ActiveScan | null;
     schedule: Schedule;
+    quality_gate: QualityGateProps;
     can_manage_audits: boolean;
 }) {
     const laravelVersion =
@@ -128,6 +132,7 @@ export default function ProjectShow({
                 'recent_scans',
                 'recent_findings',
                 'schedule',
+                'quality_gate',
             ],
         },
         { autoStart: false },
@@ -244,6 +249,13 @@ export default function ProjectShow({
                     projectId={project.id}
                     schedule={schedule}
                     canManage={canManageAudits}
+                />
+
+                <QualityGateCard
+                    projectId={project.id}
+                    gate={quality_gate}
+                    canManage={canManageAudits}
+                    hasAudit={summary.last_scan !== null}
                 />
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

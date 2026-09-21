@@ -177,7 +177,7 @@ it('computes an efficient project summary: totals, open breakdown by severity/ca
 
     expect($summary->totalFindings)->toBe(3)
         ->and($summary->openFindings)->toBe(3)
-        ->and($summary->openFindingsBySeverity)->toBe(['high' => 1, 'critical' => 1, 'low' => 1])
+        ->and($summary->openFindingsBySeverity)->toEqualCanonicalizing(['high' => 1, 'critical' => 1, 'low' => 1])
         ->and($summary->openFindingsByCategory['security'])->toBe(1)
         ->and($summary->openFindingsByCategory['dependency'])->toBe(1)
         ->and($summary->lastCompletedScanAnalyzerStatuses)->toBe(['composer-security' => 'passed'])

@@ -5,6 +5,7 @@ namespace App\Audit\Findings\Ingestion;
 use App\Audit\Discovery\Profile\ProjectProfile;
 use App\Audit\Engine\Execution\AnalyzerExecution;
 use App\Audit\Engine\Execution\AuditRunResult;
+use App\Audit\Findings\Events\ScanFinished;
 use App\Audit\Findings\FindingCandidate;
 use App\Audit\Findings\ScanOrigin;
 use App\Audit\Findings\ScanStatus;
@@ -156,6 +157,7 @@ final class ScanRecorder
             $scan->finished_at = now();
             $scan->save();
             $this->releaseActiveLock($scan);
+            ScanFinished::dispatch($scan);
 
             throw $exception;
         }
@@ -168,6 +170,7 @@ final class ScanRecorder
         $scan->findings_summary = $this->summarize($scan, $resolvedCount);
         $scan->save();
         $this->releaseActiveLock($scan);
+        ScanFinished::dispatch($scan);
 
         return $scan;
     }
@@ -185,6 +188,7 @@ final class ScanRecorder
         $scan->finished_at = now();
         $scan->save();
         $this->releaseActiveLock($scan);
+        ScanFinished::dispatch($scan);
 
         return $scan;
     }

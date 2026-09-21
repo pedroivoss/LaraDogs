@@ -187,6 +187,19 @@ Scan History and Scan Detail show the scan's **origin** (Manual /
 Scheduled / CLI) as a neutral badge. It is provenance only: the user who
 started a scan is never displayed.
 
+## Quality Gate (Phase 8)
+
+A project may have an optional Quality Gate policy (disabled by default).
+Project Detail shows a **Quality Gate** card — the latest terminal scan's
+result (Passed / Failed — _N_ policy violations / Indeterminate — reason /
+Disabled / Not evaluated) as a dimension **separate from scan status** —
+and Owner/Admin edit the policy there (User: read-only; a direct `PUT` is a
+404). Scan History gains a **Gate** column and Scan Detail the historical
+result with the policy revision and each rule's observed/expected values.
+Results are never recomputed when the policy changes. Full model, rule
+semantics and CLI in
+[`quality-gates/README.md`](quality-gates/README.md).
+
 ## Stale-running-scan decision (superseded)
 
 Phase 7's original age-based, single-threshold reclaimer (documented

@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Projects;
 
+use App\Audit\Engine\Registry\AnalyzerRegistry;
 use App\Audit\Projects\Query\CurrentFindingsQuery;
 use App\Audit\Projects\Query\ProjectListQuery;
 use App\Audit\Projects\Query\ProjectSummary;
 use App\Audit\Projects\Query\ProjectSummaryQuery;
 use App\Audit\Projects\Query\ScanHistoryQuery;
+use App\Audit\QualityGates\Query\ProjectQualityGateQuery;
 use App\Http\Controllers\Controller;
+use App\Http\Support\QualityGatePayload;
 use App\Models\Audit\Finding;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
@@ -40,12 +43,15 @@ final class ProjectsController extends Controller
         ProjectSummaryQuery $summaryQuery,
         ScanHistoryQuery $scanHistoryQuery,
         CurrentFindingsQuery $findingsQuery,
+        ProjectQualityGateQuery $gateQuery,
+        AnalyzerRegistry $registry,
     ): Response {
         $summary = $summaryQuery->forProject($project);
         $recentScans = $scanHistoryQuery->recentFor($project, limit: 5);
         $recentFindings = $findingsQuery->paginateForProject($project, perPage: 10);
         $activeScan = $project->activeScan();
         $canManage = ! $request->user()?->isUser();
+        $gate = $gateQuery->policyFor($project);
 
         return Inertia::render('projects/show', [
             'project' => [
@@ -78,7 +84,37 @@ final class ProjectsController extends Controller
                 'last_scheduled_audit_at' => $project->last_scheduled_audit_at?->toIso8601String(),
             ],
             'can_manage_audits' => $canManage,
+            // Quality Gate (Phase 8): a policy dimension, separate from scan
+            // status. `latest` is the immutable result of the newest TERMINAL
+            // scan (null = not evaluated / disabled at that time).
+            'quality_gate' => [
+                'enabled' => $gate !== null && $gate->enabled,
+                'revision' => $gate === null ? 0 : $gate->revision,
+                'form' => QualityGatePayload::form($gate),
+                'latest' => $this->latestGate($summary->lastScan, $gateQuery),
+                'analyzers' => array_map(fn ($analyzer): array => ['id' => (string) $analyzer->id(), 'name' => $analyzer->name()], $registry->all()),
+            ],
         ]);
+    }
+
+    /**
+     * The gate result of the newest TERMINAL scan, or null when that scan
+     * was not evaluated (gate disabled then, or a pre-Phase-8 scan).
+     *
+     * @return array<string,mixed>|null
+     */
+    private function latestGate(?Scan $lastScan, ProjectQualityGateQuery $gateQuery): ?array
+    {
+        if ($lastScan === null) {
+            return null;
+        }
+
+        $result = $gateQuery->resultForScan($lastScan);
+
+        return $result === null ? null : [
+            ...QualityGatePayload::summary($result, withHeadline: true),
+            'scan_id' => $lastScan->public_id,
+        ];
     }
 
     /**

@@ -12,7 +12,7 @@
 | 5     | Bug / Quality Analysis                  | Not started                                                                                                                                                                                                         |
 | 6     | Performance Analysis                    | Not started                                                                                                                                                                                                         |
 | 7     | Dashboard                               | **Complete** (see below)                                                                                                                                                                                            |
-| 8     | History / Comparison / Quality Gates    | Not started                                                                                                                                                                                                         |
+| 8     | Quality Gates & Policy Engine           | **Complete** (see below; scan-to-scan comparison _report_ deferred)                                                                                                                                                 |
 | 9     | MCP                                     | Not started                                                                                                                                                                                                         |
 | 10    | Authentication / MCP Credentials        | Not started                                                                                                                                                                                                         |
 | 11    | Git Integration / Continuous Monitoring | Not started                                                                                                                                                                                                         |
@@ -413,6 +413,34 @@ a deliberate compatibility decision, not an oversight. See
 the full design, including what's explicitly still out of scope (push
 notifications, WebSockets/Reverb/SSE, Redis, arbitrary cron expressions,
 per-project schedule time).
+
+## What Phase 8 actually delivered
+
+Quality Gates: an optional per-project policy (`project_quality_gates`,
+disabled by default, no row = no gate) evaluated into an immutable
+per-scan result (`quality_gate_results` / `quality_gate_rule_results`,
+each carrying the policy revision and a snapshot) when a scan reaches a
+terminal state — one `ScanFinished` → `EvaluateScanQualityGate` path shared
+by the CLI, queue worker and scheduler. Outcomes are three-valued
+(Passed / Failed / **Indeterminate**), combined Failed > Indeterminate >
+Passed; conclusions resting on the absence of findings are only Passed when
+the audit is trustworthy (scan completed, no analyzer Failed / TimedOut /
+Unavailable / Skipped). Rule catalog: `laradogs.gate.max-open-findings`,
+`no-new-severity` (baseline = previous Completed scan; identity = the
+existing Finding fingerprint; a regression is comparison metadata, never a
+new `FindingStatus`), `analyzer-status`, `analyzer-coverage` (composer/npm
+always fail a coverage requirement by design — they declare none).
+`Severity::rank()` became the single trusted ordering (Unknown has no rank
+and counts as meeting every threshold) and
+`FindingStatus::countsTowardQualityGate()` the single eligibility rule
+(open/confirmed count; resolved, accepted-risk, false-positive, ignored do
+not). Owner/Admin edit the policy from Project Detail with structured
+controls; Users see it read-only; Scan History gains a Gate column and Scan
+Detail the full rule results. `laradogs:project:gate` reads the immutable
+result and returns the V1 exit-code contract. No new Docker service, no
+Redis. Validated on SQLite and MySQL 8.4 (full suite, an upgrade from the
+pre-Phase-8 schema with legacy data, and 8 truly concurrent policy saves).
+See [`../quality-gates/README.md`](../quality-gates/README.md).
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

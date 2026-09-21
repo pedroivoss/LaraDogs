@@ -88,6 +88,11 @@ Implemented/Planned split.
     - [`auditing/severity.md`](auditing/severity.md)
     - [`auditing/confidence.md`](auditing/confidence.md)
     - [`auditing/suppressions.md`](auditing/suppressions.md)
+- [`quality-gates/README.md`](quality-gates/README.md) — **Implemented
+  (Phase 8).** Quality Gates & Policy Engine: policy model, the
+  Passed/Failed/Indeterminate outcomes, rule catalog, finding-status and
+  baseline semantics, coverage-aware evaluation, policy revisions, the
+  `laradogs:project:gate` exit-code contract and Dashboard behavior.
 - [`auditing/projects.md`](auditing/projects.md) — **Implemented
   (Phase 3.2).** Registering a project, running repeated persisted audits
   against it, scan history, and the query/service layer the Dashboard

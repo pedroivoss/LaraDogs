@@ -29,6 +29,7 @@ final class ScanHistoryQuery
             // and always resolves the tie correctly.
             ->orderByDesc('started_at')
             ->orderByDesc('id')
+            ->with('qualityGateResult')
             ->limit($limit)
             ->get();
     }
@@ -46,6 +47,7 @@ final class ScanHistoryQuery
             ->where('project_id', $project->id)
             ->orderByDesc('started_at')
             ->orderByDesc('id')
+            ->with('qualityGateResult')
             ->paginate($perPage)
             ->withQueryString();
     }

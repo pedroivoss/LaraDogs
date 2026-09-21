@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { DataPagination } from '@/components/audit/data-pagination';
+import { GateOutcomeBadge } from '@/components/audit/gate-outcome-badge';
 import { OriginBadge } from '@/components/audit/origin-badge';
 import {
     Table,
@@ -16,13 +17,19 @@ import {
     scans as projectScansRoute,
     show as projectShow,
 } from '@/routes/projects';
-import type { Pagination, ScanOrigin, ScanStatus } from '@/types/audit';
+import type {
+    GateSummary,
+    Pagination,
+    ScanOrigin,
+    ScanStatus,
+} from '@/types/audit';
 
 type ScanListItem = {
     id: string;
     status: ScanStatus;
     origin: ScanOrigin;
     origin_label: string;
+    gate: GateSummary | null;
     started_at: string;
     finished_at: string | null;
     duration_ms: number | null;
@@ -77,6 +84,7 @@ export default function ProjectScans({
                                         <TableHead>Finished</TableHead>
                                         <TableHead>Duration</TableHead>
                                         <TableHead>Status</TableHead>
+                                        <TableHead>Gate</TableHead>
                                         <TableHead>Origin</TableHead>
                                         <TableHead>Findings observed</TableHead>
                                         <TableHead>Auto-resolved</TableHead>
@@ -114,6 +122,25 @@ export default function ProjectScans({
                                                 className={`font-medium ${STATUS_STYLE[scan.status]}`}
                                             >
                                                 {scan.status}
+                                            </TableCell>
+                                            <TableCell>
+                                                {scan.gate ? (
+                                                    <GateOutcomeBadge
+                                                        state={
+                                                            scan.gate.outcome
+                                                        }
+                                                    />
+                                                ) : (
+                                                    <span
+                                                        className="text-muted-foreground"
+                                                        title="Not evaluated"
+                                                    >
+                                                        —
+                                                        <span className="sr-only">
+                                                            Not evaluated
+                                                        </span>
+                                                    </span>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <OriginBadge

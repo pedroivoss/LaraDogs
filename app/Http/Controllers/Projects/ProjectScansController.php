@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Projects;
 
 use App\Audit\Projects\Query\CurrentFindingsQuery;
 use App\Audit\Projects\Query\ScanHistoryQuery;
+use App\Audit\QualityGates\Query\ProjectQualityGateQuery;
 use App\Http\Controllers\Controller;
+use App\Http\Support\QualityGatePayload;
 use App\Models\Audit\Finding;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
@@ -41,7 +43,7 @@ final class ProjectScansController extends Controller
         ]);
     }
 
-    public function show(Project $project, Scan $scan, ScanHistoryQuery $query, CurrentFindingsQuery $findingsQuery): Response
+    public function show(Project $project, Scan $scan, ScanHistoryQuery $query, CurrentFindingsQuery $findingsQuery, ProjectQualityGateQuery $gateQuery): Response
     {
         // Defensive, explicit scoping — never rely solely on Laravel's
         // implicit nested-binding scoping for a security-relevant
@@ -52,6 +54,7 @@ final class ProjectScansController extends Controller
 
         $detail = $query->detail($scan->public_id);
         $observedFindings = $findingsQuery->forScan($scan);
+        $gateResult = $gateQuery->resultForScan($scan);
 
         return Inertia::render('projects/scan-detail', [
             'project' => [
@@ -74,6 +77,10 @@ final class ProjectScansController extends Controller
             ],
             'analyzer_executions' => $detail?->analyzerExecutions->map($this->executionToArray(...))->all() ?? [],
             'observed_findings' => $observedFindings->map($this->findingToArray(...))->all(),
+            // Historical gate result (immutable, judged against the policy
+            // revision recorded on it) — null when not evaluated.
+            'quality_gate' => $gateResult === null ? null : QualityGatePayload::detail($gateResult),
+            'quality_gate_rule_titles' => QualityGatePayload::ruleTitles(),
         ]);
     }
 
@@ -91,6 +98,7 @@ final class ProjectScansController extends Controller
             'finished_at' => $scan->finished_at?->toIso8601String(),
             'duration_ms' => $scan->duration_ms,
             'findings_summary' => $scan->findings_summary,
+            'gate' => $scan->qualityGateResult === null ? null : QualityGatePayload::summary($scan->qualityGateResult),
         ];
     }
 

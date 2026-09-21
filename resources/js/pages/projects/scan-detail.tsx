@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { AnalyzerStatusBadge } from '@/components/audit/analyzer-status-badge';
 import { CoverageBadge } from '@/components/audit/coverage-badge';
+import { GateOutcomeBadge } from '@/components/audit/gate-outcome-badge';
 import { OriginBadge } from '@/components/audit/origin-badge';
 import { SeverityBadge } from '@/components/audit/severity-badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +15,7 @@ import {
 import type {
     AnalyzerExecutionSummary,
     FindingSummary,
+    GateDetail,
     ScanOrigin,
     ScanStatus,
 } from '@/types/audit';
@@ -42,11 +44,15 @@ export default function ScanDetail({
     scan,
     analyzer_executions,
     observed_findings,
+    quality_gate,
+    quality_gate_rule_titles,
 }: {
     project: { id: string; name: string };
     scan: ScanDetail;
     analyzer_executions: AnalyzerExecutionSummary[];
     observed_findings: FindingSummary[];
+    quality_gate: GateDetail | null;
+    quality_gate_rule_titles: Record<string, string>;
 }) {
     return (
         <>
@@ -94,6 +100,101 @@ export default function ScanDetail({
                         }
                     />
                 </div>
+
+                <Card data-testid="scan-quality-gate">
+                    <CardHeader>
+                        <CardTitle className="text-sm">Quality Gate</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        {quality_gate === null ? (
+                            <p className="text-muted-foreground text-sm">
+                                Not evaluated — no Quality Gate was enabled when
+                                this scan finished (or it pre-dates Quality
+                                Gates).
+                            </p>
+                        ) : (
+                            <>
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <GateOutcomeBadge
+                                        state={quality_gate.outcome}
+                                    />
+                                    <span className="text-muted-foreground text-xs">
+                                        Policy revision{' '}
+                                        {quality_gate.policy_revision} ·
+                                        evaluated{' '}
+                                        {new Date(
+                                            quality_gate.evaluated_at,
+                                        ).toLocaleString()}
+                                        {quality_gate.baseline_scan_id
+                                            ? ' · compared with the previous completed audit'
+                                            : ''}
+                                    </span>
+                                </div>
+                                <ul className="divide-y">
+                                    {quality_gate.rules.map((rule, index) => (
+                                        <li
+                                            key={`${rule.rule_id}-${rule.subject}-${index}`}
+                                            className="space-y-1 py-3 first:pt-0 last:pb-0"
+                                        >
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <GateOutcomeBadge
+                                                    state={rule.outcome}
+                                                />
+                                                <span className="text-sm font-medium">
+                                                    {quality_gate_rule_titles[
+                                                        rule.rule_id
+                                                    ] ?? rule.rule_id}
+                                                    {rule.subject
+                                                        ? ` — ${rule.subject}`
+                                                        : ''}
+                                                </span>
+                                            </div>
+                                            <p className="text-muted-foreground text-xs">
+                                                {rule.summary}
+                                            </p>
+                                            {(rule.observed !== null ||
+                                                rule.expected !== null) && (
+                                                <p className="text-muted-foreground text-xs">
+                                                    Observed:{' '}
+                                                    {rule.observed ?? '—'} ·
+                                                    Expected:{' '}
+                                                    {rule.expected ?? '—'}
+                                                </p>
+                                            )}
+                                            {rule.finding_ids.length > 0 && (
+                                                <p className="text-xs">
+                                                    {rule.finding_ids.map(
+                                                        (id, i) => (
+                                                            <span key={id}>
+                                                                {i > 0
+                                                                    ? ', '
+                                                                    : ''}
+                                                                <Link
+                                                                    href={findingShow(
+                                                                        id,
+                                                                    )}
+                                                                    className="underline"
+                                                                >
+                                                                    {id.slice(
+                                                                        -6,
+                                                                    )}
+                                                                </Link>
+                                                            </span>
+                                                        ),
+                                                    )}
+                                                    {rule.finding_count >
+                                                    rule.finding_ids.length
+                                                        ? ` … and ${rule.finding_count - rule.finding_ids.length} more`
+                                                        : ''}
+                                                </p>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        )}
+                    </CardContent>
+                </Card>
 
                 <Card>
                     <CardHeader>

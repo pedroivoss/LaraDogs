@@ -2,6 +2,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import { DataPagination } from '@/components/audit/data-pagination';
 import { GateOutcomeBadge } from '@/components/audit/gate-outcome-badge';
 import { OriginBadge } from '@/components/audit/origin-badge';
+import { SourceRevisionCell } from '@/components/audit/source-summary';
 import {
     Table,
     TableBody,
@@ -22,6 +23,7 @@ import type {
     Pagination,
     ScanOrigin,
     ScanStatus,
+    SourceInfo,
 } from '@/types/audit';
 
 type ScanListItem = {
@@ -30,6 +32,7 @@ type ScanListItem = {
     origin: ScanOrigin;
     origin_label: string;
     gate: GateSummary | null;
+    source: SourceInfo | null;
     started_at: string;
     finished_at: string | null;
     duration_ms: number | null;
@@ -85,6 +88,7 @@ export default function ProjectScans({
                                         <TableHead>Duration</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead>Gate</TableHead>
+                                        <TableHead>Revision</TableHead>
                                         <TableHead>Origin</TableHead>
                                         <TableHead>Findings observed</TableHead>
                                         <TableHead>Auto-resolved</TableHead>
@@ -141,6 +145,11 @@ export default function ProjectScans({
                                                         </span>
                                                     </span>
                                                 )}
+                                            </TableCell>
+                                            <TableCell>
+                                                <SourceRevisionCell
+                                                    source={scan.source}
+                                                />
                                             </TableCell>
                                             <TableCell>
                                                 <OriginBadge

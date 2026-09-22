@@ -88,6 +88,11 @@ Implemented/Planned split.
     - [`auditing/severity.md`](auditing/severity.md)
     - [`auditing/confidence.md`](auditing/confidence.md)
     - [`auditing/suppressions.md`](auditing/suppressions.md)
+- [`git/README.md`](git/README.md) — **Implemented (Phase 9).** Git &
+  repository integration: local, read-only source snapshots (full SHA,
+  branch, dirty, sanitized origin), source consistency during an audit and
+  its fail-closed effect on findings and Quality Gates, the security model
+  (hostile-repository isolation), Docker, and limitations.
 - [`quality-gates/README.md`](quality-gates/README.md) — **Implemented
   (Phase 8).** Quality Gates & Policy Engine: policy model, the
   Passed/Failed/Indeterminate outcomes, rule catalog, finding-status and

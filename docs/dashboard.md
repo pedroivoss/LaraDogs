@@ -200,6 +200,23 @@ Results are never recomputed when the policy changes. Full model, rule
 semantics and CLI in
 [`quality-gates/README.md`](quality-gates/README.md).
 
+## Git source (Phase 9)
+
+Project Detail gains a **Source** card contrasting the **current source
+state** (a request-time, read-only inspection of the mounted repository:
+revision, branch, working tree) with the **last audited source state** (the
+immutable snapshot of the last completed scan) and shows **Source changed
+since last audit** when they differ. A dirty audit states that its SHA alone
+does not reproduce the audited source; a source-inconsistent audit is
+flagged. The current state is a lazy prop — evaluated on a full page load (and
+once when an active scan finishes), never on the 4-second poll, and never per
+row on the Projects list. Scan History gains a compact **Revision** column
+(short SHA · branch · Dirty / Changed during audit) and Scan Detail the full
+immutable snapshot (full SHA, branch/detached, dirty, source consistent,
+commit time/subject, sanitized origin — no credentials, no author, no host
+path). Pre-Phase-9 scans render "Not captured", never an invented revision.
+Details: [`git/README.md`](git/README.md).
+
 ## Stale-running-scan decision (superseded)
 
 Phase 7's original age-based, single-threshold reclaimer (documented
@@ -327,7 +344,8 @@ auto-mounts a host directory.
   phase's own scope (no formula specified, no historical-comparison
   semantics built yet).
 - **No MCP server, no Git integration, no quality gates** — none of these
-  exist in this phase's code; explicitly out of scope.
+  existed in Phase 7's code (Quality Gates arrived in Phase 8 and local Git
+  source awareness in Phase 9 — see the sections above).
 - Live browser (Playwright) validation for this delivery was blocked by
   an unrelated concurrent session already holding the shared MCP browser
   profile lock — substituted with authenticated HTTP-level smoke tests

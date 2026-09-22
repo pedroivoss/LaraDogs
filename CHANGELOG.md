@@ -6,7 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
-## [Unreleased] — Phase 8: Quality Gates & Policy Engine
+## [Unreleased] — Phase 9: Git & Repository Integration
+
+LaraDogs observes the **local** Git state of mounted projects — read-only, no
+network. See [`docs/git/README.md`](docs/git/README.md).
+
+### Added
+
+- **`GitRepositoryInspector`** (`App\Audit\Source\Git`): the single Git
+  entry point — argv-only via the existing `ProcessRunner`, explicit minimal
+  environment, hostile-config neutralization (`core.fsmonitor`,
+  `filter.*.clean|smudge|process`, `include`, `core.worktree`), no hooks, no
+  pager/external diff/askpass/credential helper, command-scoped
+  `safe.directory`, `--no-optional-locks`, bounded output, 10 s budget. Only
+  `rev-parse`, `config --list`, `status --porcelain=v2`, `cat-file commit`.
+- **Immutable `GitSnapshot` per scan** (additive `scans.source_*` columns;
+  `source_revision` now holds the full SHA): state (`git`/`none`/`bare`/
+  `unavailable`), branch/detached, dirty, commit time/subject, sanitized
+  origin. Pre-Phase-9 scans stay `null` — nothing fabricated.
+- **Source integrity** (9.1 fail-closed): Git is captured before and after the
+  analyzers. `source_consistent` is `true` only for a **clean** Git repository
+  with a commit that stayed identical; `false` (with `source_integrity_reason`:
+  `changed_during_audit`, `dirty_at_start`, `no_commits`, `bare_repository`,
+  `unavailable`, `unsafe_config`) otherwise; `null` only for a genuine non-Git
+  target. `unavailable` is never equivalent to `none`.
+- **Include boundary**: the repository config is read with `--no-includes` and
+  any `include.*`/`includeIf.*` (or `core.worktree`) is refused as
+  `unsafe_config` — verified that plain `--list` follows every include form
+  outside the repository.
+- **Remote sanitization** (`RemoteUrlSanitizer`): credentials, query strings
+  and local paths never persisted or rendered.
+- **UI/CLI**: Project Detail _Source_ card (current vs last audited, _Source
+  changed since last audit_), Scan History _Revision_ column, Scan Detail
+  provenance; `laradogs:inspect` Git section, `laradogs:project:audit`
+  `Source:` line/warning and a bounded `scan.source` JSON object; the gate's
+  text output shows the revision.
+- `git` in the Docker runtime image; `laradogs.git.*` config
+  (`LARADOGS_GIT_*`).
+
+### Changed
+
+- **Fail-closed on a source-inconsistent scan**: `FindingReconciler`
+  auto-resolves nothing (positive findings are still recorded), and absence-based
+  Quality Gate rules become Indeterminate (a proven violation still Fails).
+- Roadmap: Phase 9 is Git & Repository Integration; the next agreed phases are
+  10 → CI & GitHub Integration, 11 → MCP / IDE Integration, 12 → Remediation
+  Workflow. Authentication/MCP credentials and Hardening/Release are left
+  unnumbered (see `docs/roadmap/roadmap.md`).
+
+### Unchanged
+
+- The Phase 8 gate exit codes (`0/1/2/3/4`) and JSON envelope.
+
+## [Phase 8]: Quality Gates & Policy Engine
 
 An optional per-project policy layer that judges each finished scan as
 **Passed / Failed / Indeterminate** — a policy result, not a security

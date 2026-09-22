@@ -28,6 +28,12 @@ use App\Models\Audit\ScanAnalyzerExecution;
  *    behind an old finding was removed, disabled, or simply not loaded
  *    this run; only explicit coverage evidence can rule that out.
  * 3. It was not re-observed in this scan.
+ * 4. (Phase 9/9.1) The audited Git source's integrity was established — a
+ *    scan flagged `source_consistent = false` (the source changed while it
+ *    ran, was dirty when it began, has no commit, could not be inspected,
+ *    ...) cannot support ABSENCE: nothing is auto-resolved (positive
+ *    observations are still recorded). A genuine non-Git target
+ *    (`source_consistent` null) makes no such claim.
  *
  * An analyzer that didn't run, wasn't applicable, was unavailable, failed,
  * timed out, or ran with unknown/insufficient coverage gives NO evidence
@@ -43,6 +49,10 @@ final class FindingReconciler
      */
     public function reconcile(Project $project, Scan $scan): int
     {
+        if ($scan->source_consistent === false) {
+            return 0;
+        }
+
         $passedExecutions = ScanAnalyzerExecution::query()
             ->where('scan_id', $scan->id)
             ->where('status', ExecutionStatus::Passed)

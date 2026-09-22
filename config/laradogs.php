@@ -55,6 +55,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Git source inspection (Phase 9)
+    |--------------------------------------------------------------------------
+    |
+    | LaraDogs OBSERVES a mounted repository's local Git state (commit,
+    | branch, dirty flag, sanitized origin URL) — it never fetches, pulls,
+    | pushes, checks out or contacts a remote. The target repository is
+    | untrusted: every command is chosen by LaraDogs, argv-only, run with an
+    | explicit minimal environment (see App\Audit\Source\Git\GitRepositoryInspector
+    | and docs/git/README.md).
+    |
+    | `budget_seconds` is the TOTAL wall-clock budget for one inspection
+    | (a handful of metadata commands — rev-parse/config/status/cat-file,
+    | O(index), never history), deliberately far below Semgrep's timeout: a
+    | healthy repository answers in milliseconds, and an unresponsive one
+    | (network bind mount, huge working tree) must not stall a page load or
+    | an audit. On expiry the state is reported as unavailable, never guessed.
+    |
+    | `max_output_bytes` caps each command's stdout/stderr; `home` is a
+    | LaraDogs-controlled (never created, never read) HOME so no host
+    | credentials or `~/.gitconfig` can be inherited.
+    |
+    */
+
+    'git' => [
+        'binary' => env('LARADOGS_GIT_BINARY', 'git'),
+        'budget_seconds' => (int) env('LARADOGS_GIT_BUDGET_SECONDS', 10),
+        'max_output_bytes' => (int) env('LARADOGS_GIT_MAX_OUTPUT_BYTES', 65_536),
+        'home' => env('LARADOGS_GIT_HOME', storage_path('app/laradogs/git-home')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Composer Audit Analyzer
     |--------------------------------------------------------------------------
     |

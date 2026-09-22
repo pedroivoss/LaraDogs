@@ -2,22 +2,33 @@
 
 ## Phases
 
-| Phase | Name                                    | Status                                                                                                                                                                                                              |
-| ----- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0     | Discovery / Architecture / Bootstrap    | **Complete**                                                                                                                                                                                                        |
-| 1     | Project Discovery (stack detection)     | **Complete**                                                                                                                                                                                                        |
-| 2     | Audit Engine Foundation                 | **Complete**                                                                                                                                                                                                        |
-| 3     | Finding Domain + Persistence            | **Complete** (3.1 Safe Finding Resolution Coverage done; 3.2 Persistent Project Audit Workflow done — see below)                                                                                                    |
-| 4     | Security / Dependency Scanners          | **In progress** (`composer audit` + `npm audit` done; a 12-rule Semgrep foundation done, including a first Laravel-aware slice — see below; OSV-Scanner/Trivy and a comprehensive Semgrep rule library not started) |
-| 5     | Bug / Quality Analysis                  | Not started                                                                                                                                                                                                         |
-| 6     | Performance Analysis                    | Not started                                                                                                                                                                                                         |
-| 7     | Dashboard                               | **Complete** (see below)                                                                                                                                                                                            |
-| 8     | Quality Gates & Policy Engine           | **Complete** (see below; scan-to-scan comparison _report_ deferred)                                                                                                                                                 |
-| 9     | MCP                                     | Not started                                                                                                                                                                                                         |
-| 10    | Authentication / MCP Credentials        | Not started                                                                                                                                                                                                         |
-| 11    | Git Integration / Continuous Monitoring | Not started                                                                                                                                                                                                         |
-| 12    | CI / GitHub Action                      | Not started                                                                                                                                                                                                         |
-| 13    | Hardening / Release                     | Not started                                                                                                                                                                                                         |
+| Phase | Name                                 | Status                                                                                                                                                                                                              |
+| ----- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0     | Discovery / Architecture / Bootstrap | **Complete**                                                                                                                                                                                                        |
+| 1     | Project Discovery (stack detection)  | **Complete**                                                                                                                                                                                                        |
+| 2     | Audit Engine Foundation              | **Complete**                                                                                                                                                                                                        |
+| 3     | Finding Domain + Persistence         | **Complete** (3.1 Safe Finding Resolution Coverage done; 3.2 Persistent Project Audit Workflow done — see below)                                                                                                    |
+| 4     | Security / Dependency Scanners       | **In progress** (`composer audit` + `npm audit` done; a 12-rule Semgrep foundation done, including a first Laravel-aware slice — see below; OSV-Scanner/Trivy and a comprehensive Semgrep rule library not started) |
+| 5     | Bug / Quality Analysis               | Not started                                                                                                                                                                                                         |
+| 6     | Performance Analysis                 | Not started                                                                                                                                                                                                         |
+| 7     | Dashboard                            | **Complete** (see below)                                                                                                                                                                                            |
+| 8     | Quality Gates & Policy Engine        | **Complete** (see below; scan-to-scan comparison _report_ deferred)                                                                                                                                                 |
+| 9     | Git & Repository Integration         | **Complete** (local, read-only source metadata + source-integrity fail-closed semantics; see below)                                                                                                                 |
+| 10    | CI & GitHub Integration              | Not started (next agreed major phase — absorbs the former "Git Integration / Continuous Monitoring" hosted-repository scope and the former "CI / GitHub Action")                                                    |
+| 11    | MCP / IDE Integration                | Not started (formerly listed as Phase 9 "MCP")                                                                                                                                                                      |
+| 12    | Remediation Workflow                 | Not started                                                                                                                                                                                                         |
+
+**Numbering note (Phase 9.1).** After Phase 9 the agreed order is 10 → CI &
+GitHub Integration, 11 → MCP / IDE Integration, 12 → Remediation Workflow.
+Two previously listed items are **not yet placed** in that order and are left
+unnumbered rather than silently renumbered: **Authentication / MCP
+Credentials** (formerly Phase 10) and **Hardening / Release** (formerly
+Phase 13). Older documents (`integrations/mcp.md`, ADR-0001, ADR-0006,
+`architecture/security-model.md`, `auditing/findings-lifecycle.md`, the
+"Deferred items" below, the `ActorType` docblock) still use the _former_
+numbers (MCP = 9, Auth/MCP credentials = 10, CI = 12, Hardening = 13); they
+predate this ordering and are intentionally left untouched — reconcile them
+when those phases are scheduled.
 
 No changes were made to this phase list during Phase 0 — the brief's
 ordering (foundation → discovery → engine → domain model → scanners →
@@ -441,6 +452,30 @@ result and returns the V1 exit-code contract. No new Docker service, no
 Redis. Validated on SQLite and MySQL 8.4 (full suite, an upgrade from the
 pre-Phase-8 schema with legacy data, and 8 truly concurrent policy saves).
 See [`../quality-gates/README.md`](../quality-gates/README.md).
+
+## What Phase 9 actually delivered
+
+**Git & Repository Integration** — LaraDogs is now Git-aware, **locally and
+read-only**. Every persisted audit records an immutable `GitSnapshot` (full
+commit SHA, branch or detached HEAD, dirty flag, commit time/subject,
+sanitized origin) captured **before** the analyzers run, plus a second capture
+afterwards that sets `source_consistent`. Phase 9.1 made this fail-closed
+for every unverifiable source, not only a demonstrated mutation: a repository
+that changed mid-audit, was **dirty at start**, has no commits, is bare or
+could not be read marks the scan unverified, auto-resolves no finding from absence
+(`FindingReconciler`) and turns absence-based Quality Gate rules
+Indeterminate (a proven violation still Fails; the evaluator stays pure and
+the Phase 8 exit codes are unchanged). One canonical `GitRepositoryInspector`
+serves the CLI, Project Detail (current vs last audited source, _Source
+changed since last audit_) and the runner, with a hostile-repository security
+model verified against the real Git binary (a repository's own config can make
+`git status` execute commands — `core.fsmonitor`, `filter.*` — so these are
+neutralized; argv only, minimal environment, no hooks, no network, bounded,
+command-scoped `safe.directory`). Scan History/Detail show revision/provenance;
+`laradogs:inspect` and `laradogs:project:audit` show/emit source metadata; the
+Docker runtime image now ships `git`. **Not** in this phase: fetch/pull/push,
+GitHub/GitLab API, webhooks, CI, MCP, managed clones. See
+[`../git/README.md`](../git/README.md).
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

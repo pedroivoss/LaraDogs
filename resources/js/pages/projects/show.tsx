@@ -1,6 +1,6 @@
 import { Form, Head, Link, router, usePoll } from '@inertiajs/react';
 import { ArrowRight, ShieldAlert, Terminal } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnalyzerStatusBadge } from '@/components/audit/analyzer-status-badge';
 import { CoverageBadge } from '@/components/audit/coverage-badge';
 import { EmptyState } from '@/components/audit/empty-state';
@@ -8,6 +8,7 @@ import { FindingStatusBadge } from '@/components/audit/finding-status-badge';
 import { QualityGateCard } from '@/components/audit/quality-gate-card';
 import type { QualityGateProps } from '@/components/audit/quality-gate-card';
 import { SeverityBadge } from '@/components/audit/severity-badge';
+import { SourceCard } from '@/components/audit/source-summary';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +34,7 @@ import type {
     AnalyzerExecutionSummary,
     FindingSummary,
     ScanSummary,
+    SourceOverview,
 } from '@/types/audit';
 
 type ProjectProfile = {
@@ -96,6 +98,7 @@ export default function ProjectShow({
     active_scan,
     schedule,
     quality_gate,
+    source,
     can_manage_audits: canManageAudits,
 }: {
     project: { id: string; name: string; path: string };
@@ -109,6 +112,7 @@ export default function ProjectShow({
     active_scan: ActiveScan | null;
     schedule: Schedule;
     quality_gate: QualityGateProps;
+    source?: SourceOverview;
     can_manage_audits: boolean;
 }) {
     const laravelVersion =
@@ -138,12 +142,23 @@ export default function ProjectShow({
         { autoStart: false },
     );
 
+    // `source` is a lazy prop (it runs local Git commands), deliberately not
+    // part of the 4s poll — refresh it once, when an active scan ends, so the
+    // "last audited" state is current.
+    const wasActive = useRef(active_scan !== null);
+
     useEffect(() => {
         if (active_scan !== null) {
             start();
         } else {
             stop();
         }
+
+        if (wasActive.current && active_scan === null) {
+            router.reload({ only: ['source'] });
+        }
+
+        wasActive.current = active_scan !== null;
     }, [active_scan, start, stop]);
 
     function runAudit() {
@@ -250,6 +265,8 @@ export default function ProjectShow({
                     schedule={schedule}
                     canManage={canManageAudits}
                 />
+
+                <SourceCard projectId={project.id} source={source} />
 
                 <QualityGateCard
                     projectId={project.id}

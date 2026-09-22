@@ -76,6 +76,49 @@ export type AnalyzerExecutionSummary = {
     diagnostics?: Array<{ level: string; message: string }> | null;
 };
 
+export type SourceType = 'git' | 'none' | 'bare' | 'unavailable';
+
+/**
+ * Immutable-or-current Git source metadata (Phase 9). Never an absolute host
+ * path, credentials or an author identity. `consistent` exists only on a
+ * persisted scan's snapshot: `false` = the source changed while that audit
+ * ran; `null` = no verifiable source identity.
+ */
+export type SourceInfo = {
+    type: SourceType;
+    label: string;
+    commit: string | null;
+    short_commit: string | null;
+    branch: string | null;
+    detached: boolean | null;
+    dirty: boolean | null;
+    commit_at: string | null;
+    commit_subject: string | null;
+    remote: string | null;
+    reproducible: boolean;
+    reason: string | null;
+    consistent?: boolean | null;
+    /** Why integrity was NOT established (null when verified / no Git claim). */
+    integrity_reason?: SourceIntegrityReason | null;
+    /** true only for a demonstrated mutation, false for "could not be proven". */
+    integrity_changed?: boolean;
+    integrity_message?: string | null;
+};
+
+export type SourceIntegrityReason =
+    | 'changed_during_audit'
+    | 'dirty_at_start'
+    | 'no_commits'
+    | 'bare_repository'
+    | 'unavailable'
+    | 'unsafe_config';
+
+export type SourceOverview = {
+    current: SourceInfo;
+    last_audited: { scan_id: string; source: SourceInfo | null } | null;
+    changed_since_last_audit: boolean | null;
+};
+
 export type ScanSummary = {
     id: string;
     status: ScanStatus;
@@ -87,6 +130,7 @@ export type ScanSummary = {
         auto_resolved: number;
         by_severity: Record<string, number>;
     } | null;
+    source?: SourceInfo | null;
 };
 
 export type FindingSummary = {

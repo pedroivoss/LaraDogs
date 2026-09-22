@@ -95,6 +95,19 @@ listener evaluates the project's enabled policy (see
 It is the same path for CLI, worker and scheduled audits, runs outside any
 analyzer/ingestion transaction, and can never fail the scan.
 
+### Source snapshot & consistency (Phase 9)
+
+`ScanRunner::run()` inspects the project's Git state **before** any analyzer
+runs and persists that immutable snapshot on the scan (`beginRunning`), then
+inspects it **again after** the analyzers and derives a source-integrity
+verdict (`source_consistent` `true` / `false` / `null` plus a
+`source_integrity_reason`). If the repository changed while the audit ran, the
+scan is marked, no absent finding is auto-resolved, and quality gates cannot
+pass on absence; nothing reruns automatically. The inspection is local,
+read-only, bounded (10 s budget) and never contacts a remote — it needs no
+write access to the `/projects:ro` mount. Full model:
+[`../git/README.md`](../git/README.md).
+
 ## Concurrency: a real, portable mutex
 
 **A project can never have two active scans at once** — manual+manual,

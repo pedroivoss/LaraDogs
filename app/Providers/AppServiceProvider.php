@@ -10,6 +10,7 @@ use App\Audit\Engine\Process\SymfonyProcessRunner;
 use App\Audit\Engine\Registry\AnalyzerRegistry;
 use App\Audit\Findings\Events\ScanFinished;
 use App\Audit\QualityGates\EvaluateQualityGateWhenScanFinishes;
+use App\Audit\Source\Git\GitRepositoryInspector;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,16 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(ProcessRunner::class, SymfonyProcessRunner::class);
+
+        // Git metadata inspection uses its OWN runner: a much smaller
+        // output cap than analyzers (a hostile repository must not create
+        // an unbounded payload) — see config('laradogs.git').
+        $this->app->singleton(GitRepositoryInspector::class, fn (): GitRepositoryInspector => new GitRepositoryInspector(
+            runner: new SymfonyProcessRunner((int) config('laradogs.git.max_output_bytes')),
+            binary: (string) config('laradogs.git.binary'),
+            budgetSeconds: (int) config('laradogs.git.budget_seconds'),
+            home: (string) config('laradogs.git.home'),
+        ));
 
         $this->app->singleton(AnalyzerRegistry::class, function (): AnalyzerRegistry {
             $registry = new AnalyzerRegistry;

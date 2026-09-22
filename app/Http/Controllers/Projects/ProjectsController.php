@@ -9,8 +9,12 @@ use App\Audit\Projects\Query\ProjectSummary;
 use App\Audit\Projects\Query\ProjectSummaryQuery;
 use App\Audit\Projects\Query\ScanHistoryQuery;
 use App\Audit\QualityGates\Query\ProjectQualityGateQuery;
+use App\Audit\Source\Git\GitRepositoryInspector;
+use App\Audit\Source\Git\GitSnapshot;
+use App\Audit\Source\Git\SourceConsistency;
 use App\Http\Controllers\Controller;
 use App\Http\Support\QualityGatePayload;
+use App\Http\Support\SourcePayload;
 use App\Models\Audit\Finding;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
@@ -45,6 +49,7 @@ final class ProjectsController extends Controller
         CurrentFindingsQuery $findingsQuery,
         ProjectQualityGateQuery $gateQuery,
         AnalyzerRegistry $registry,
+        GitRepositoryInspector $git,
     ): Response {
         $summary = $summaryQuery->forProject($project);
         $recentScans = $scanHistoryQuery->recentFor($project, limit: 5);
@@ -84,6 +89,11 @@ final class ProjectsController extends Controller
                 'last_scheduled_audit_at' => $project->last_scheduled_audit_at?->toIso8601String(),
             ],
             'can_manage_audits' => $canManage,
+            // Git source (Phase 9). LAZY on purpose: the current state runs a
+            // few local Git commands, so it is evaluated on a full page load
+            // or when explicitly requested — never on the 4s active-scan poll,
+            // and never on the Projects list.
+            'source' => fn (): array => $this->sourceToArray($project, $summary->lastCompletedScan, $git),
             // Quality Gate (Phase 8): a policy dimension, separate from scan
             // status. `latest` is the immutable result of the newest TERMINAL
             // scan (null = not evaluated / disabled at that time).
@@ -95,6 +105,31 @@ final class ProjectsController extends Controller
                 'analyzers' => array_map(fn ($analyzer): array => ['id' => (string) $analyzer->id(), 'name' => $analyzer->name()], $registry->all()),
             ],
         ]);
+    }
+
+    /**
+     * CURRENT source (request-time, read-only Git metadata inspection of the
+     * mounted directory) next to the LAST AUDITED source (the immutable
+     * snapshot persisted on the last completed scan) — never one standing in
+     * for the other.
+     *
+     * @return array<string,mixed>
+     */
+    private function sourceToArray(Project $project, ?Scan $lastCompleted, GitRepositoryInspector $git): array
+    {
+        $current = $git->inspect($project->path);
+        $audited = $lastCompleted === null ? null : GitSnapshot::fromScan($lastCompleted);
+        $comparison = $audited === null ? null : SourceConsistency::sameSource($audited, $current);
+
+        return [
+            'current' => SourcePayload::snapshot($current),
+            'last_audited' => $lastCompleted === null ? null : [
+                'scan_id' => $lastCompleted->public_id,
+                'source' => SourcePayload::forScan($lastCompleted),
+            ],
+            // null = not comparable (no Git repository, legacy scan, ...).
+            'changed_since_last_audit' => $comparison === null ? null : ! $comparison,
+        ];
     }
 
     /**
@@ -163,6 +198,7 @@ final class ProjectsController extends Controller
             'finished_at' => $scan->finished_at?->toIso8601String(),
             'duration_ms' => $scan->duration_ms,
             'findings_summary' => $scan->findings_summary,
+            'source' => SourcePayload::forScan($scan),
         ];
     }
 

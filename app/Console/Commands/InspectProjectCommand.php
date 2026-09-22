@@ -7,6 +7,9 @@ use App\Audit\Discovery\Profile\ProjectProfile;
 use App\Audit\Discovery\ProjectDiscovery;
 use App\Audit\Discovery\Support\Detection;
 use App\Audit\Discovery\Support\VersionDetection;
+use App\Audit\Source\Git\GitRepositoryInspector;
+use App\Audit\Source\Git\GitRepositoryState;
+use App\Audit\Source\Git\GitSnapshot;
 use Illuminate\Console\Command;
 
 /**
@@ -20,7 +23,7 @@ final class InspectProjectCommand extends Command
 
     protected $description = 'Inspect a directory and report its detected stack (read-only, never executes target code)';
 
-    public function handle(ProjectDiscovery $discovery): int
+    public function handle(ProjectDiscovery $discovery, GitRepositoryInspector $git): int
     {
         $path = (string) $this->argument('path');
 
@@ -32,13 +35,21 @@ final class InspectProjectCommand extends Command
             return self::FAILURE;
         }
 
+        // Local, read-only Git metadata (Phase 9) — the one canonical
+        // inspector, never a network call.
+        $snapshot = $git->inspect($result->path);
+
         if ((bool) $this->option('json')) {
-            $this->line((string) json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $this->line((string) json_encode(
+                [...$result->jsonSerialize(), 'git' => $this->gitToArray($snapshot)],
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+            ));
 
             return self::SUCCESS;
         }
 
         $this->renderHuman($result->profile);
+        $this->renderGit($snapshot);
 
         return self::SUCCESS;
     }
@@ -103,6 +114,52 @@ final class InspectProjectCommand extends Command
             foreach ($profile->issues as $issue) {
                 $this->line("  - {$issue->source}: {$issue->message}");
             }
+        }
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    private function gitToArray(GitSnapshot $snapshot): array
+    {
+        if (! $snapshot->isRepository()) {
+            return ['type' => $snapshot->state->value];
+        }
+
+        return [
+            'type' => 'git',
+            'commit' => $snapshot->commitSha,
+            'branch' => $snapshot->branch,
+            'detached' => $snapshot->detached,
+            'dirty' => $snapshot->dirty,
+            'commit_at' => $snapshot->commitTimestamp?->format(DATE_ATOM),
+            'commit_subject' => $snapshot->commitSubject,
+            'remote' => $snapshot->remoteOrigin,
+        ];
+    }
+
+    private function renderGit(GitSnapshot $snapshot): void
+    {
+        $this->newLine();
+        $this->line('<fg=yellow>Git</>');
+
+        match ($snapshot->state) {
+            GitRepositoryState::NotRepository => $this->line('  Git: not detected'),
+            GitRepositoryState::Bare => $this->line('  Git: bare repository (no working tree — cannot be audited as source)'),
+            GitRepositoryState::Unavailable => $this->line('  Git: unavailable ('.($snapshot->unavailableReason ?? 'unknown').')'),
+            GitRepositoryState::Repository => $this->renderRepository($snapshot),
+        };
+    }
+
+    private function renderRepository(GitSnapshot $snapshot): void
+    {
+        $this->line('  Git: detected');
+        $this->line('  Branch: '.($snapshot->detached ? 'detached HEAD' : ($snapshot->branch ?? 'unknown')));
+        $this->line('  Revision: '.($snapshot->shortSha() ?? 'no commits yet'));
+        $this->line('  Working tree: '.($snapshot->dirty === null ? 'unknown' : ($snapshot->dirty ? 'dirty' : 'clean')));
+
+        if ($snapshot->remoteOrigin !== null) {
+            $this->line("  Origin: {$snapshot->remoteOrigin}");
         }
     }
 

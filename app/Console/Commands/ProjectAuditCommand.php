@@ -4,6 +4,8 @@ namespace App\Console\Commands;
 
 use App\Audit\Projects\RunProjectAudit;
 use App\Audit\Projects\RunProjectAuditOutcome;
+use App\Audit\Source\ScanSourceSummary;
+use App\Audit\Source\SourceIntegrityReason;
 use App\Models\Audit\FindingOccurrence;
 use App\Models\Audit\Project;
 use App\Models\Audit\QualityGateResult;
@@ -102,6 +104,18 @@ final class ProjectAuditCommand extends Command
         $this->components->info("Scan {$scan->public_id} for {$project->name}: {$scan->status->value}");
         $this->line("Duration: {$scan->duration_ms}ms");
 
+        $sourceLine = ScanSourceSummary::line($scan);
+
+        if ($sourceLine !== null) {
+            $this->line("Source: {$sourceLine}");
+        }
+
+        if ($scan->source_consistent === false) {
+            // Truthful wording: "changed" only for a demonstrated mutation.
+            $reason = SourceIntegrityReason::tryFrom((string) $scan->source_integrity_reason) ?? SourceIntegrityReason::Unavailable;
+            $this->components->warn($reason->explanation().' Absent findings were not auto-resolved and quality gates cannot pass on absence.');
+        }
+
         if ($gate !== null) {
             $this->line("Quality Gate: {$gate->outcome->label()} (policy revision {$gate->policy_revision}) — see `laradogs:project:gate {$project->public_id}`");
         }
@@ -182,6 +196,7 @@ final class ProjectAuditCommand extends Command
             'finished_at' => $scan->finished_at?->toIso8601String(),
             'duration_ms' => $scan->duration_ms,
             'findings_summary' => $scan->findings_summary,
+            'source' => ScanSourceSummary::forScan($scan),
         ];
     }
 

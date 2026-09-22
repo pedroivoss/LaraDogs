@@ -10,6 +10,8 @@ use App\Audit\Findings\FindingCandidate;
 use App\Audit\Findings\ScanOrigin;
 use App\Audit\Findings\ScanStatus;
 use App\Audit\Projects\RunProjectAudit;
+use App\Audit\Source\Git\GitSnapshot;
+use App\Audit\Source\SourceIntegrity;
 use App\Models\Audit\Finding;
 use App\Models\Audit\FindingOccurrence;
 use App\Models\Audit\Project;
@@ -96,8 +98,12 @@ final class ScanRecorder
      * Transitions a `Queued` scan to `Running`, recording the real,
      * freshly-discovered profile (never the registration-time one — see
      * App\Audit\Projects\RunProjectAudit's own docblock).
+     *
+     * `$source` is the Git source snapshot captured BEFORE any analyzer
+     * runs; it is written once here and never touched again (Phase 9).
+     * `null` means "not captured" — the `source_*` columns stay `null`.
      */
-    public function beginRunning(Scan $scan, ProjectProfile $profile): Scan
+    public function beginRunning(Scan $scan, ProjectProfile $profile, ?GitSnapshot $source = null): Scan
     {
         $scan->status = ScanStatus::Running;
         $scan->running_at = now();
@@ -108,6 +114,11 @@ final class ScanRecorder
             'php_version' => PHP_VERSION,
             'os' => PHP_OS_FAMILY,
         ];
+
+        if ($source !== null) {
+            $scan->forceFill($source->toScanAttributes());
+        }
+
         $scan->save();
 
         return $scan;
@@ -126,9 +137,17 @@ final class ScanRecorder
 
     /**
      * @param  array<string, list<FindingCandidate>>  $candidatesByAnalyzer  Keyed by analyzer id.
+     * @param  SourceIntegrity|null  $sourceIntegrity  Phase 9/9.1: whether the audited Git source can support
+     *                                                 absence-based conclusions. Persisted; when
+     *                                                 `consistent === false` (changed, dirty at start,
+     *                                                 unavailable, ...) {@see FindingReconciler} skips
+     *                                                 auto-resolution and gates cannot Pass on absence.
      */
-    public function completeScan(Scan $scan, AuditRunResult $runResult, array $candidatesByAnalyzer = []): Scan
+    public function completeScan(Scan $scan, AuditRunResult $runResult, array $candidatesByAnalyzer = [], ?SourceIntegrity $sourceIntegrity = null): Scan
     {
+        $scan->source_consistent = $sourceIntegrity?->consistent;
+        $scan->source_integrity_reason = $sourceIntegrity?->reason?->value;
+
         try {
             DB::transaction(function () use ($scan, $runResult, $candidatesByAnalyzer): void {
                 foreach ($runResult->executions as $execution) {

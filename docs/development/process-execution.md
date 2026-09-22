@@ -100,6 +100,12 @@ final readonly class ProcessResult
 `proc_open()` level" is distinguishable from any real exit code,
 including `0`.
 
+> **Second caller (Phase 9).** `App\Audit\Source\Git\GitRepositoryInspector`
+> also runs through this contract — with its **own** `SymfonyProcessRunner`
+> instance (64 KiB output cap instead of 5 MB), a 10 s total budget and a
+> fully explicit environment — to read a mounted repository's local Git
+> metadata. See [`../git/README.md`](../git/README.md).
+
 ## `SymfonyProcessRunner`
 
 The first (and, as of Phase 4, only) implementation, built on

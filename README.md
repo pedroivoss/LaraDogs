@@ -226,6 +226,15 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   surfaces and `laradogs:project:gate` with documented exit codes for
   future CI. It is a policy result, not a security score. See
   [`docs/quality-gates/README.md`](docs/quality-gates/README.md).
+- **Git & repository integration (Phase 9)** — every persisted audit
+  records an immutable, **local, read-only** Git source snapshot (full commit
+  SHA, branch or detached HEAD, dirty flag, commit time/subject, sanitized
+  origin — never credentials or author identity), captured before the
+  analyzers run and re-checked afterwards: a repository that changes
+  mid-audit is flagged, auto-resolves nothing from absence and cannot make a
+  Quality Gate pass. Project Detail contrasts the current vs the last audited
+  source. LaraDogs never fetches, pulls or contacts a remote. See
+  [`docs/git/README.md`](docs/git/README.md).
 - A Laravel 13 application with React + Inertia (official starter kit)
   and Fortify-based authentication (Phase 0), now serving the real
   Dashboard above (Phase 7) instead of the starter kit's original
@@ -476,16 +485,18 @@ Phase 0 (bootstrap), Phase 1 (Project Discovery), Phase 2 (Audit Engine
 Foundation), Phase 3 (Finding Domain + Persistence, including its 3.1
 Safe-Finding-Resolution-Coverage and 3.2 Persistent-Project-Audit-Workflow
 sub-phases), and Phase 7 (Dashboard, plus its 7.1.1–7.1.4 self-hosting/
-authorization/async-execution sub-phases), and Phase 8 (Quality Gates &
-Policy Engine) are complete. Phase 4
+authorization/async-execution sub-phases), Phase 8 (Quality Gates &
+Policy Engine), and Phase 9 (Git & Repository Integration — local, read-only
+source snapshots) are complete. Phase 4
 (Security/Dependency Scanners) is in progress — `composer audit`,
 `npm audit`, and Semgrep (foundation + a first Laravel-aware ruleset, 12
 rules) are done (tracked in commit history/ADR notes as sub-phases
 4/4.1/4.2/4.2.1/5/6); other scanners (PHPStan/Larastan, ESLint,
 OSV-Scanner, Trivy) and the COMPREHENSIVE Laravel-aware Semgrep rule
-library are not started. This document's own coarse Phases 5, 6, 8–13
-(Bug/Quality Analysis, Performance Analysis, History/Comparison/Quality
-Gates, MCP, ...) are not started. Full list, current position, and items
+library are not started. This document's own coarse Phases 5 and 6 (Bug/Quality Analysis,
+Performance Analysis) and the agreed next phases — 10 (CI & GitHub
+Integration), 11 (MCP / IDE Integration) and 12 (Remediation Workflow) — are
+not started. Full list, current position, and items
 deliberately deferred:
 [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
 

@@ -214,29 +214,56 @@ re-evaluating an existing scan against a new policy, "count accepted
 risks" as a policy option, per-analyzer scoping of count rules, and a
 Dashboard-home "projects failing" widget.
 
-## Phase 9 — MCP
+## Phase 9 — Git & Repository Integration ✅ Complete
 
-Implement the MCP server described in `docs/integrations/mcp.md` against
-a real Finding/Scan implementation.
+LaraDogs became Git-aware **locally and read-only**: every persisted audit
+captures an immutable Git source snapshot (full commit SHA, branch or
+detached HEAD, dirty flag, commit timestamp/subject, sanitized origin) before
+the analyzers run, plus a second capture afterwards. From those two snapshots
+a **source-integrity** verdict is derived (Phase 9.1): only a **clean** Git
+repository **with a commit** that is identical before and after is verified.
+A source that changed during the audit, was **dirty when it began**, has **no
+commits**, is a **bare** repository, or whose Git state could **not be read**
+(unavailable / refused config) is _unverified_: nothing is auto-resolved from
+absence and a Quality Gate can never Pass on absence (a proven violation still
+Fails). A genuine non-Git target makes no integrity claim. One canonical
+`GitRepositoryInspector` (argv-only, explicit minimal environment,
+hostile-config neutralization, repository-controlled `include`/`includeIf`
+refused, no hooks, no network, bounded) backs the CLI, Project Detail (current
+vs last-audited source) and the audit runner; Scan History and Scan Detail
+show revision/provenance. **No** fetch/pull/push, no GitHub/GitLab API, no CI,
+no MCP. See [`../git/README.md`](../git/README.md).
 
-## Phase 10 — Authentication / MCP Credentials
+## Phase 10 — CI & GitHub Integration
 
-Harden the auth model beyond the starter-kit default (see
-`docs/architecture/security-model.md`'s known limitation on public
-registration); implement MCP credential issuance/scoping per ADR-0006.
+The next agreed major phase. Package LaraDogs so a GitHub Actions workflow can
+invoke it as a quality gate on external projects (building on the Phase 8
+`laradogs:project:gate` exit-code contract), and add the hosted-repository
+side (GitHub API, webhooks, managed clones, continuous monitoring) on top of
+Phase 9's local, read-only source snapshot. _Absorbs the former "Git
+Integration / Continuous Monitoring" and "CI / GitHub Action" entries._
 
-## Phase 11 — Git Integration / Continuous Monitoring
+## Phase 11 — MCP / IDE Integration
 
-Watch a repository for changes and trigger scans automatically.
+Implement the MCP server described in `docs/integrations/mcp.md` against a
+real Finding/Scan implementation, and IDE-facing integration. _(Formerly
+listed as "Phase 9 — MCP".)_
 
-## Phase 12 — CI / GitHub Action
+## Phase 12 — Remediation Workflow
 
-Package LaraDogs as something a GitHub Actions workflow can invoke as a
-quality gate on external projects.
+Not yet specified. Not started.
 
-## Phase 13 — Hardening / Release
+## Not yet placed in the numbering
 
-Security review, RBAC, rate limiting, audit logging, CSP/headers, and
-whatever else accumulated as a "deferred to hardening" note across prior
-phases (see `roadmap.md`'s deferred-items list, which Phase 13 should
-treat as a checklist to revisit, not close by default).
+Left unnumbered on purpose (see the numbering note in
+[`roadmap.md`](roadmap.md)) rather than silently renumbered:
+
+- **Authentication / MCP Credentials** _(formerly Phase 10)_ — harden the auth
+  model beyond the starter-kit default (see
+  `docs/architecture/security-model.md`'s known limitation on public
+  registration); implement MCP credential issuance/scoping per ADR-0006.
+- **Hardening / Release** _(formerly Phase 13)_ — security review, RBAC, rate
+  limiting, audit logging, CSP/headers, and whatever else accumulated as a
+  "deferred to hardening" note across prior phases (see `roadmap.md`'s
+  deferred-items list, which this phase should treat as a checklist to
+  revisit, not close by default).

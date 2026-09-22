@@ -33,6 +33,16 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property array<string,mixed> $project_profile
  * @property array<string,mixed>|null $environment
  * @property array<string,mixed>|null $findings_summary
+ * @property string|null $source_type
+ * @property string|null $source_revision
+ * @property string|null $source_branch
+ * @property bool|null $source_detached
+ * @property bool|null $source_dirty
+ * @property CarbonImmutable|null $source_commit_at
+ * @property string|null $source_commit_subject
+ * @property string|null $source_remote
+ * @property bool|null $source_consistent
+ * @property string|null $source_integrity_reason
  */
 final class Scan extends Model
 {
@@ -42,7 +52,9 @@ final class Scan extends Model
         'project_id', 'status', 'origin', 'initiated_by_user_id', 'started_at',
         'running_at', 'heartbeat_at', 'finished_at', 'duration_ms',
         'laradogs_version', 'source_revision', 'project_profile', 'environment',
-        'findings_summary',
+        'findings_summary', 'source_type', 'source_branch', 'source_detached',
+        'source_dirty', 'source_commit_at', 'source_commit_subject', 'source_remote',
+        'source_consistent', 'source_integrity_reason',
     ];
 
     protected $casts = [
@@ -55,6 +67,10 @@ final class Scan extends Model
         'project_profile' => 'array',
         'environment' => 'array',
         'findings_summary' => 'array',
+        'source_detached' => 'boolean',
+        'source_dirty' => 'boolean',
+        'source_commit_at' => 'datetime',
+        'source_consistent' => 'boolean',
     ];
 
     /**

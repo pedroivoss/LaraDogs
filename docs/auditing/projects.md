@@ -7,8 +7,8 @@ of the already-complete Finding domain (`Project`/`Scan`/
 `FindingReconciler` — see
 [`findings-lifecycle.md`](findings-lifecycle.md)): registering a project,
 running repeated audits against it, and querying its scan/finding
-history. **No dashboard, no MCP server, no Git integration, and no
-quality gates exist yet** — this is the CLI-adapter and query-service
+history. **At the time of Phase 3.2 there was no dashboard, MCP server, Git integration or
+quality gates** (all but MCP have since been added) — this is the CLI-adapter and query-service
 foundation those will consume.
 
 > **Phase classification: Phase 3.2 — Persistent Project Audit Workflow.**
@@ -180,8 +180,9 @@ never reused for a later run:
 
 - The `Scan` itself: status, `started_at`/`finished_at`, `duration_ms`,
   the `project_profile` snapshot, `environment`, `findings_summary`,
-  `laradogs_version`. `source_revision` stays `null` — no Git integration
-  exists yet.
+  `laradogs_version`. `source_revision` was `null` until Phase 9, which now records the
+  full Git commit SHA (plus branch/dirty/consistency) there — see
+  [`../git/README.md`](../git/README.md); older scans keep `null`.
 - One `ScanAnalyzerExecution` per analyzer that ran: id/name/category/
   status/summary/diagnostics/**coverage**/duration. Coverage (`Full` /
   `Explicit` / `Unknown`) is always preserved, including for a timed-out
@@ -349,7 +350,8 @@ chooses what to mount, same as before. No Docker socket access was added.
 - No way to rename/deactivate/delete a registered project yet — only
   `laradogs:project:add`/`laradogs:project:list`/`laradogs:project:audit`
   exist.
-- No Git integration — `source_revision` stays `null` on every scan.
+- (Phase 3.2 limitation, since addressed by Phase 9) Git source metadata is
+  captured for new scans; older scans keep `source_revision = null`.
 - No quality gates/pass-fail policy — a scan's own status is never a
   pass/fail verdict on the project.
 - No filtering UI, no Dashboard, no MCP server — the query/service layer

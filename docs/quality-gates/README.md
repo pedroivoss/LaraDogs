@@ -206,9 +206,21 @@ justify "absent, therefore new/not new". If none exists, the
 
 Conclusions that rest on the **absence** of findings (a count within its
 limit; "nothing new") are only Passed when the audit is trustworthy: the
-scan **completed** and no in-scope analyzer **Failed / TimedOut /
-Unavailable / Skipped**. `NotApplicable` analyzers are not gaps (the
+scan **completed**, its Git source **did not change while it ran**
+(`source_consistent` is not `false` — Phase 9/9.1), and no in-scope analyzer
+**Failed / TimedOut / Unavailable / Skipped**. `NotApplicable` analyzers are not gaps (the
 stack never called for them). Otherwise the rule is **Indeterminate**.
+
+A scan whose Git **source integrity was not established** — the repository
+changed during the audit, was **dirty when it began**, has no commits, is
+bare, or Git could not be read (`unavailable` / `unsafe_config`) — may not
+describe one exact revision: absence-based rules become **Indeterminate** (the
+summary states the true reason, saying "changed" only for a real mutation), a
+proven violation is still **Failed**, and `analyzer-status`/`analyzer-coverage`
+(statements about the execution itself) are unaffected. The evaluator stays
+pure — the reason arrives as evidence (`GateEvidence::$sourceIntegrityIssue`).
+A genuine non-Git project makes no such claim. Full truth table:
+[`../git/README.md`](../git/README.md#source-integrity-truth-table).
 
 `Passed` status with `Unknown` coverage is **not** a gap for these count
 rules — coverage requirements are their own explicit rule

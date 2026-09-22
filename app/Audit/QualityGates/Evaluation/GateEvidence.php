@@ -2,6 +2,8 @@
 
 namespace App\Audit\QualityGates\Evaluation;
 
+use App\Audit\Source\SourceIntegrityReason;
+
 /**
  * Everything the {@see QualityGateEvaluator} needs, already loaded from
  * persisted data — so the evaluator itself is a pure function with no
@@ -17,6 +19,8 @@ final readonly class GateEvidence
      * @param  int|null  $baselineScanId  the previous Completed scan, or null when none exists
      * @param  array<string,ExecutionEvidence>  $baselineExecutions  baseline executions keyed by analyzer id
      * @param  list<NewFindingCandidate>  $newCandidates  only populated when a no-new rule and a baseline exist
+     * @param  SourceIntegrityReason|null  $sourceIntegrityIssue  why the audited source's integrity was NOT established
+     *                                                            (Phase 9/9.1); null = verified or no Git claim to make
      */
     public function __construct(
         public bool $scanCompleted,
@@ -26,5 +30,6 @@ final readonly class GateEvidence
         public ?int $baselineScanId,
         public array $baselineExecutions,
         public array $newCandidates,
+        public ?SourceIntegrityReason $sourceIntegrityIssue = null,
     ) {}
 }

@@ -8,6 +8,8 @@ use App\Audit\Engine\Execution\ExecutionStatus;
 use App\Audit\Engine\Registry\AnalyzerRegistry;
 use App\Audit\Findings\FindingCandidate;
 use App\Audit\Findings\ScanOrigin;
+use App\Audit\Source\Git\GitRepositoryInspector;
+use App\Audit\Source\Git\SourceConsistency;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
 
@@ -45,6 +47,7 @@ final class ScanRunner
         private readonly AuditEngine $engine,
         private readonly AnalyzerRegistry $registry,
         private readonly ScanRecorder $recorder,
+        private readonly ?GitRepositoryInspector $git = null,
     ) {}
 
     /**
@@ -64,7 +67,12 @@ final class ScanRunner
 
     public function run(Scan $scan, AuditContext $context): Scan
     {
-        $this->recorder->beginRunning($scan, $context->profile);
+        // Phase 9: the source state is captured BEFORE any analyzer runs and
+        // again AFTER, so a repository that changes mid-audit is detected
+        // rather than silently treated as one exact revision.
+        $before = $this->git?->inspect($context->projectPath);
+
+        $this->recorder->beginRunning($scan, $context->profile, $before);
 
         $runResult = $this->engine->run($context, function () use ($scan): void {
             $this->recorder->touchHeartbeat($scan);
@@ -85,6 +93,12 @@ final class ScanRunner
             }
         }
 
-        return $this->recorder->completeScan($scan, $runResult, $candidatesByAnalyzer);
+        $integrity = null;
+
+        if ($this->git !== null && $before !== null) {
+            $integrity = SourceConsistency::assess($before, $this->git->inspect($context->projectPath));
+        }
+
+        return $this->recorder->completeScan($scan, $runResult, $candidatesByAnalyzer, $integrity);
     }
 }

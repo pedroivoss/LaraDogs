@@ -100,10 +100,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         sqlite3 \
         curl \
         ca-certificates \
+        git \
     && rm -rf /var/lib/apt/lists/* \
     && docker-php-ext-install -j"$(nproc)" pdo_sqlite pdo_mysql \
     && apt-get purge -y --auto-remove libsqlite3-dev default-libmysqlclient-dev pkg-config
 
+# `git` (Phase 9 — App\Audit\Source\Git\GitRepositoryInspector): read-only,
+# LOCAL metadata inspection of the mounted (`/projects:ro`) repositories —
+# commit, branch, dirty flag, sanitized origin. LaraDogs never fetches, pulls
+# or contacts a remote, and runs Git with an explicit minimal environment
+# and no inherited host config/credentials. One image serves app, worker and
+# scheduler; only app (Project Detail / inspect) and worker (persisted audits)
+# actually invoke it.
 # Node/npm for `npm audit` (Phase 4.2 — App\Audit\Analyzers\Npm\NpmAuditAnalyzer).
 # Installed directly here (not copied from `builder`, unlike Composer's
 # single-file binary): npm is not one file — `/usr/bin/npm` is a thin

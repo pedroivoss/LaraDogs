@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Audit\Findings\ScanStatus;
 use App\Audit\QualityGates\QualityGateOutcome;
 use App\Audit\QualityGates\Query\ProjectQualityGateQuery;
+use App\Audit\Source\ScanSourceSummary;
 use App\Models\Audit\Project;
 use App\Models\Audit\QualityGateResult;
 use App\Models\Audit\QualityGateRuleResult;
@@ -128,6 +129,12 @@ final class ProjectGateCommand extends Command
         }
 
         $this->line("Quality Gate: {$result->outcome->label()} (policy revision {$result->policy_revision}, scan {$scan->public_id})");
+
+        $sourceLine = ScanSourceSummary::line($scan);
+
+        if ($sourceLine !== null) {
+            $this->line("  Source: {$sourceLine}");
+        }
 
         foreach ($result->ruleResults as $rule) {
             $marker = match ($rule->outcome) {

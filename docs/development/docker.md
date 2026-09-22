@@ -135,6 +135,21 @@ scheduling semantics) is in
 [`../auditing/audit-execution.md`](../auditing/audit-execution.md) rather
 than duplicated here.
 
+## Git in the runtime image (Phase 9)
+
+The runtime image installs `git` so LaraDogs can observe the mounted
+repositories' **local** state (commit, branch, dirty flag, sanitized origin).
+`app` (Project Detail, `laradogs:inspect`) and `worker` (persisted audits)
+run it; `scheduler` shares the image but only enqueues audits. It is run
+argv-only with an explicit minimal environment, never fetches or contacts a
+remote, needs no write access (`/projects:ro` is enough) and reads no host
+Git configuration or credentials. `safe.directory` (Docker bind mounts
+commonly trigger Git's dubious-ownership protection) is scoped per command
+to the one validated project path — never `*`, never written to a config
+file. No new host port. Overrides: `LARADOGS_GIT_BINARY`,
+`LARADOGS_GIT_BUDGET_SECONDS`, `LARADOGS_GIT_MAX_OUTPUT_BYTES`,
+`LARADOGS_GIT_HOME`. See [`../git/README.md`](../git/README.md).
+
 ## Project mount (auditing local projects)
 
 `docker-compose.yml` never hardcodes a personal path — the `app` service

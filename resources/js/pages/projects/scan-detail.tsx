@@ -4,6 +4,7 @@ import { CoverageBadge } from '@/components/audit/coverage-badge';
 import { GateOutcomeBadge } from '@/components/audit/gate-outcome-badge';
 import { OriginBadge } from '@/components/audit/origin-badge';
 import { SeverityBadge } from '@/components/audit/severity-badge';
+import { SourceSnapshotCard } from '@/components/audit/source-summary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { dashboard } from '@/routes';
 import { show as findingShow } from '@/routes/findings';
@@ -18,6 +19,7 @@ import type {
     GateDetail,
     ScanOrigin,
     ScanStatus,
+    SourceInfo,
 } from '@/types/audit';
 
 type ScanDetail = {
@@ -30,6 +32,7 @@ type ScanDetail = {
     duration_ms: number | null;
     laradogs_version: string | null;
     source_revision: string | null;
+    source: SourceInfo | null;
     project_profile: Record<string, unknown> | null;
     environment: Record<string, unknown> | null;
     findings_summary: {
@@ -100,6 +103,8 @@ export default function ScanDetail({
                         }
                     />
                 </div>
+
+                <SourceSnapshotCard source={scan.source} />
 
                 <Card data-testid="scan-quality-gate">
                     <CardHeader>

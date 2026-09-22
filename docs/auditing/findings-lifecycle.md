@@ -214,6 +214,16 @@ be auto-resolved ONLY when ALL of the following are true:
    `rule_id` — `Unknown` coverage never satisfies this, even under
    `Passed`.
 3. It received no new occurrence in that scan.
+4. (Phase 9/9.1) The scan's audited **Git source integrity was established**
+   (`scans.source_consistent` is not `false`): a clean repository with a
+   commit that stayed identical. A scan flagged `false` — the source changed
+   during the audit, was **dirty when it began**, has no commits, is bare, or
+   Git could not be read (`unavailable` / `unsafe_config`) — cannot support
+   **absence**: `FindingReconciler` returns immediately and auto-resolves
+   nothing. **Positive** observations are unaffected — findings are still
+   created, re-observed and reopened. A genuine non-Git project or a legacy
+   scan (`source_consistent` `null`) makes no such claim and behaves as before. See
+   [`../git/README.md`](../git/README.md#fail-closed-consequences-of-an-unverified-scan).
 
 `App\Audit\Findings\Ingestion\FindingReconciler::reconcile(Project, Scan)`
 runs this after all of a scan's candidates are ingested: for each
@@ -355,7 +365,7 @@ touching it.
 - A `Finding` display/detail UI, scan comparison view, or any dashboard
   surface (Phase 7+) — though nothing here was denormalized prematurely
   to anticipate one.
-- The MCP server (Phase 9) — `public_id` exists so `get_finding`/
+- The MCP server (Phase 10) — `public_id` exists so `get_finding`/
   `list_findings`/`get_scan`-shaped MCP tools have something stable to key
   off later.
 - A human-friendly sequential display key, richer fail-fast/per-analyzer

@@ -9,6 +9,7 @@ use App\Audit\QualityGates\GateRuleId;
 use App\Audit\QualityGates\Policy\MaxOpenFindingsRule;
 use App\Audit\QualityGates\Policy\NoNewSeverityRule;
 use App\Audit\QualityGates\Policy\QualityGatePolicy;
+use App\Audit\Source\SourceIntegrityReason;
 use App\Models\Audit\Finding;
 use App\Models\Audit\FindingOccurrence;
 use App\Models\Audit\Scan;
@@ -77,6 +78,9 @@ final class GateEvidenceLoader
             baselineScanId: $baselineId,
             baselineExecutions: $baselineExecutions,
             newCandidates: $candidates,
+            sourceIntegrityIssue: $scan->source_consistent === false
+                ? (SourceIntegrityReason::tryFrom((string) $scan->source_integrity_reason) ?? SourceIntegrityReason::Unavailable)
+                : null,
         );
     }
 

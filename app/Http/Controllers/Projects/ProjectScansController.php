@@ -7,6 +7,7 @@ use App\Audit\Projects\Query\ScanHistoryQuery;
 use App\Audit\QualityGates\Query\ProjectQualityGateQuery;
 use App\Http\Controllers\Controller;
 use App\Http\Support\QualityGatePayload;
+use App\Http\Support\SourcePayload;
 use App\Models\Audit\Finding;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
@@ -71,6 +72,7 @@ final class ProjectScansController extends Controller
                 'duration_ms' => $scan->duration_ms,
                 'laradogs_version' => $scan->laradogs_version,
                 'source_revision' => $scan->source_revision,
+                'source' => SourcePayload::forScan($scan),
                 'project_profile' => $scan->project_profile,
                 'environment' => $scan->environment,
                 'findings_summary' => $scan->findings_summary,
@@ -99,6 +101,7 @@ final class ProjectScansController extends Controller
             'duration_ms' => $scan->duration_ms,
             'findings_summary' => $scan->findings_summary,
             'gate' => $scan->qualityGateResult === null ? null : QualityGatePayload::summary($scan->qualityGateResult),
+            'source' => SourcePayload::forScan($scan),
         ];
     }
 

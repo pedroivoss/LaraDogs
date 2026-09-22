@@ -25,9 +25,10 @@ use App\Audit\QualityGates\QualityGateOutcome;
  *   is Failed — even if other evidence is incomplete.
  * - A conclusion that rests on the ABSENCE of findings (a count within its
  *   limit, "nothing new") may only be Passed when the audit that produced
- *   it is trustworthy: the scan completed and no in-scope analyzer
- *   Failed / TimedOut / was Unavailable / Skipped. Otherwise it is
- *   Indeterminate.
+ *   it is trustworthy: the scan completed, its Git source's integrity was
+ *   established (Phase 9/9.1: not changed, not dirty at start, inspectable),
+ *   and no in-scope analyzer Failed / TimedOut / was Unavailable / Skipped.
+ *   Otherwise it is Indeterminate.
  * - Rules about an analyzer's own execution/coverage are statements about
  *   the evidence itself, judged from that execution.
  *
@@ -279,6 +280,13 @@ final class QualityGateEvaluator
         }
 
         $gaps = [];
+
+        // Source integrity was not established (the source changed while
+        // analyzers ran, was dirty at the start, has no commit, could not be
+        // inspected, ...): what the scan did NOT find proves nothing.
+        if ($evidence->sourceIntegrityIssue !== null) {
+            $gaps[] = $evidence->sourceIntegrityIssue->gateClause();
+        }
 
         foreach ($evidence->executions as $analyzer => $execution) {
             if (in_array($execution->status, [ExecutionStatus::Failed, ExecutionStatus::TimedOut, ExecutionStatus::Unavailable, ExecutionStatus::Skipped, ExecutionStatus::Planned], true)) {

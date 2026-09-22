@@ -4,6 +4,7 @@ namespace App\Models\Audit;
 
 use App\Audit\Findings\ScanOrigin;
 use App\Audit\Findings\ScanStatus;
+use App\Models\Integrations\GitHubCheckReport;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
@@ -127,5 +128,18 @@ final class Scan extends Model
     public function qualityGateResult(): HasOne
     {
         return $this->hasOne(QualityGateResult::class);
+    }
+
+    /**
+     * Whether this scan's result was reported to GitHub as a Check Run
+     * (Phase 10) — absent when `--github-report` was never used, GitHub
+     * reporting failed, or the scan pre-dates this feature. A GitHub
+     * reporting failure never changes anything else about this Scan.
+     *
+     * @return HasOne<GitHubCheckReport, $this>
+     */
+    public function githubCheckReport(): HasOne
+    {
+        return $this->hasOne(GitHubCheckReport::class);
     }
 }

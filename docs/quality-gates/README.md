@@ -314,6 +314,14 @@ tell a policy failure from an infrastructure problem. **A CI job must treat
 any non-zero code — including `2` and `4` — as "do not proceed"**: exit
 `4` is never a pass.
 
+**Reused, not duplicated, by CI (Phase 10).** `laradogs:ci:audit` reads the
+exact same immutable result and reports it with this exact same exit-code
+contract (its own `3` additionally covers revision-verification/operational
+failures this command's own path can produce) — the `gate` JSON block is
+byte-for-byte identical between the two commands
+(`App\Console\Commands\Support\GateResultCliPayload`), never a second,
+subtly different shape. See [`../ci/README.md`](../ci/README.md).
+
 ### JSON
 
 ```json

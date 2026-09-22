@@ -1,0 +1,72 @@
+# Example GitHub Actions workflow for a repository AUDITED by LaraDogs.
+#
+# This file is a TEMPLATE to copy into the AUDITED repository's own
+# `.github/workflows/`, NOT part of LaraDogs' own CI. It assumes:
+#
+#   - a self-hosted runner that already has the LaraDogs Docker Compose
+#     stack running (see docs/self-hosting.md and docs/ci/README.md);
+#   - that runner's workspace is reachable under LaraDogs' own
+#     LARADOGS_PROJECTS_PATH -> /projects:ro mount — adjust the path
+#     below (`/projects/<repo-name>`) to match your own layout;
+#   - the target repository is already registered with this LaraDogs
+#     instance (or registers itself idempotently on first run — see
+#     docs/ci/README.md#architecture-no-second-pipeline), with a Quality
+#     Gate policy configured by an operator via the Dashboard (Phase 8).
+#
+# Do NOT run this on an untrusted self-hosted runner exposed to arbitrary
+# public fork pull requests — see
+# docs/integrations/github.md#fork-pr-security.
+
+name: LaraDogs Quality Gate
+
+on:
+    pull_request:
+    push:
+        branches: [main]
+
+# Least privilege: only what Check Run reporting needs. Never
+# `contents: write` or an admin scope — see
+# docs/integrations/github.md#required-permissions.
+permissions:
+    contents: read
+    checks: write
+
+jobs:
+    laradogs:
+        runs-on: self-hosted
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  # For pull_request: explicitly check out the PR's real HEAD
+                  # commit, not the ephemeral merge commit `GITHUB_SHA` would
+                  # otherwise resolve to — see
+                  # docs/integrations/github.md#pull-request-semantics.
+                  ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+            - name: Audit with LaraDogs
+              env:
+                  # GITHUB_TOKEN is the built-in, job-scoped Actions token — a
+                  # personal access token CANNOT create Check Runs (GitHub's
+                  # Checks API only accepts GitHub App-issued tokens). See
+                  # docs/integrations/github.md#authentication--token-model.
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  set +e
+                  docker compose -f /opt/laradogs/docker-compose.yml exec -T app \
+                    php artisan laradogs:ci:audit "/projects/<repo-name>" \
+                      --expected-revision="${{ github.event.pull_request.head.sha || github.sha }}" \
+                      --github-report \
+                      --json > laradogs-result.json
+                  exit_code=$?
+                  cat laradogs-result.json
+                  # The step's own exit code is LaraDogs' exit code (0 Passed,
+                  # 1 Failed, 2 Indeterminate, 3 operational error, 4 not
+                  # evaluated) — never the exit code of `cat` above.
+                  exit $exit_code
+
+            - name: Publish the JSON result as a build artifact
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: laradogs-result
+                  path: laradogs-result.json

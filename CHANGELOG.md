@@ -6,6 +6,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 10: CI & GitHub Integration
+
+`laradogs:ci:audit` — one machine-oriented entry point, reusing the audit/
+Quality Gate pipeline unchanged. See [`docs/ci/README.md`](docs/ci/README.md)
+and [`docs/integrations/github.md`](docs/integrations/github.md).
+
+### Added
+
+- **`laradogs:ci:audit <path>`**: resolves/registers the project (idempotent,
+  reuses `RegisterProject`), runs a persisted audit (`RunProjectAudit`, no
+  second pipeline), and reports the Quality Gate result with the **same**
+  exit-code contract as `laradogs:project:gate` (`0` Passed, `1` Failed, `2`
+  Indeterminate, `3` operational error, `4` not evaluated). `--json` writes
+  ONLY the JSON envelope to stdout (verified with a real subprocess); human
+  progress goes to stderr.
+- **`--expected-revision`**: verified twice — a fast pre-audit check and the
+  authoritative post-audit check against the scan's own immutable
+  `source_revision` — via one pure, directly unit-tested predicate
+  (`App\Console\Commands\Support\CiRevisionVerification`). A mismatch is
+  always exit `3`, even when a real Scan/Gate result exists. Falls back to
+  `GITHUB_SHA` under `GITHUB_ACTIONS=true`; an explicit flag always wins.
+- **`App\Console\Commands\Support\GateResultCliPayload`**: the `gate` JSON
+  shape extracted so `laradogs:project:gate` and `laradogs:ci:audit` can
+  never silently drift into two different contracts.
+- **`--github-report`** (`App\Integrations\GitHub`, its own boundary — never
+  reachable from the Engine/gate/Git layers): creates one Check Run per scan.
+  `GitHubContext` strictly validates every `GITHUB_*` environment variable
+  (repository, SHA, server/API URL — GHES-aware via `GITHUB_API_URL`/
+  `GITHUB_SERVER_URL`); `GitHubApiClient` is a thin Laravel-HTTP-client
+  wrapper (Bearer header only, pinned `X-GitHub-Api-Version`, short timeout,
+  no automatic POST retry); outcome mapping never lets Indeterminate or an
+  operational error look like success (`action_required`/`failure`, never
+  `success`); a GitHub failure never rewrites the audit/gate facts or changes
+  the exit code (verified). `github_check_reports` (new, additive, portable
+  table) makes a retried report for the same scan a safe no-op.
+- Example self-hosted GitHub Actions workflow:
+  [`docs/ci/examples/github-actions-self-hosted.yml`](docs/ci/examples/github-actions-self-hosted.yml).
+
+### Unchanged
+
+- `laradogs:project:gate`'s own exit-code contract and JSON shape.
+- Phase 9/9.1 source-integrity semantics — a dirty or mid-audit-changed CI
+  worktree still cannot yield an absence-based Pass; the CI adapter has no
+  way to override this.
+- LaraDogs never executes the target project's own code.
+
+### Non-goals (this phase)
+
+- No public remote-execution HTTP API.
+- No repository-committed policy file (`.laradogs.yml`) — policy stays
+  operator-owned via the Dashboard.
+- No self-contained GitHub-hosted-runner packaging (V1 targets an
+  operator-run, self-hosted LaraDogs instance — the existing Docker Compose
+  stack, unchanged).
+- No GitHub API repository browsing, webhooks, managed clones, continuous
+  monitoring, or PR finding annotations.
+
 ## [Unreleased] — Phase 9: Git & Repository Integration
 
 LaraDogs observes the **local** Git state of mounted projects — read-only, no

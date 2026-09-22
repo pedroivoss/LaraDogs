@@ -315,7 +315,12 @@ access and no host Git configuration or credentials. Overrides:
 
 Deliberately not built: `git fetch`/`pull`/`push`, clone or checkout
 management, GitHub/GitLab/Bitbucket APIs, pull-request integration,
-webhooks, CI workflows, auto-checkout, merge/rebase/reset, submodule update,
-Git LFS fetch. A future phase may add hosted-repository (GitHub) integration
-and _managed_ repositories (LaraDogs-owned clones) on top of this local,
-read-only foundation.
+webhooks, auto-checkout, merge/rebase/reset, submodule update, Git LFS
+fetch. **Phase 10** builds a CI command (`laradogs:ci:audit`) and GitHub
+Check Run reporting directly on top of this local, read-only foundation —
+see [`../ci/README.md`](../ci/README.md) and
+[`../integrations/github.md`](../integrations/github.md) — without adding
+any of the above (still no fetch/pull/push, no cloning, no webhooks). A
+future phase may add the remaining hosted-repository scope (GitHub API
+repository browsing, webhooks, _managed_/LaraDogs-owned clones, continuous
+"watch and re-audit" monitoring).

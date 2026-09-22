@@ -98,6 +98,10 @@ Implemented/Planned split.
   Passed/Failed/Indeterminate outcomes, rule catalog, finding-status and
   baseline semantics, coverage-aware evaluation, policy revisions, the
   `laradogs:project:gate` exit-code contract and Dashboard behavior.
+- [`ci/README.md`](ci/README.md) — **Implemented (Phase 10).** CI: one
+  canonical `laradogs:ci:audit` command reusing the existing audit/gate
+  pipeline, the exit-code contract, the JSON envelope, revision
+  verification, execution topology, and generic (non-GitHub) usage.
 - [`auditing/projects.md`](auditing/projects.md) — **Implemented
   (Phase 3.2).** Registering a project, running repeated persisted audits
   against it, scan history, and the query/service layer the Dashboard
@@ -126,6 +130,10 @@ Implemented/Planned split.
 
 ## Integrations
 
+- [`integrations/github.md`](integrations/github.md) — **Implemented
+  (Phase 10).** GitHub Check Run reporting on top of `laradogs:ci:audit`:
+  architecture boundary, authentication, outcome mapping, failure
+  isolation, fork-PR security, pull request SHA semantics.
 - [`integrations/mcp.md`](integrations/mcp.md) — the MCP interface's
   intended shape and security model (Phase 9-10, not built yet).
 

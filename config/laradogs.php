@@ -20,6 +20,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Public URL (Phase 10)
+    |--------------------------------------------------------------------------
+    |
+    | An externally reachable base URL for THIS instance, used only to build
+    | a link a GitHub Check Run's summary can point back to (e.g. the Scan
+    | Detail page). Deliberately separate from `APP_URL` (which is very
+    | often `http://localhost:...` for a self-hosted instance and would be
+    | a meaningless link inside a GitHub Check) — `null` by default, and a
+    | link is omitted entirely rather than ever showing a localhost URL as
+    | if it were reachable. See docs/integrations/github.md.
+    |
+    */
+
+    'public_url' => env('LARADOGS_PUBLIC_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Process Execution
     |--------------------------------------------------------------------------
     |
@@ -83,6 +100,56 @@ return [
         'budget_seconds' => (int) env('LARADOGS_GIT_BUDGET_SECONDS', 10),
         'max_output_bytes' => (int) env('LARADOGS_GIT_MAX_OUTPUT_BYTES', 65_536),
         'home' => env('LARADOGS_GIT_HOME', storage_path('app/laradogs/git-home')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | CI (Phase 10)
+    |--------------------------------------------------------------------------
+    |
+    | `laradogs:ci:audit`'s own limits — kept separate from the interactive
+    | Dashboard/CLI ones so a stuck HTTP request to GitHub can never look
+    | like a stuck audit.
+    |
+    */
+
+    'ci' => [
+        'github_report_timeout_seconds' => (int) env('LARADOGS_CI_GITHUB_TIMEOUT_SECONDS', 10),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | GitHub integration (Phase 10)
+    |--------------------------------------------------------------------------
+    |
+    | GitHub CONSUMES LaraDogs results — it never defines them (see
+    | docs/integrations/github.md and App\Integrations\GitHub). `api_url`/
+    | `server_url` default to github.com but App\Integrations\GitHub\GitHubContext
+    | prefers the GITHUB_API_URL/GITHUB_SERVER_URL environment variables
+    | when present — GitHub Actions sets those automatically to the correct
+    | values on GitHub Enterprise Server, so GHES support falls out of that
+    | without any LaraDogs-side per-instance configuration; these two keys
+    | are only the fallback for running OUTSIDE Actions.
+    |
+    | `api_version` is the `X-GitHub-Api-Version` header LaraDogs sends on
+    | every request — pinned to GitHub's long-established stable version
+    | (the one used when the header is omitted at all) rather than a newer
+    | one, so a GitHub-side version rollout can never silently change the
+    | request/response shape LaraDogs was built against; bump deliberately,
+    | the same philosophy as SEMGREP_VERSION/COMPOSER_VERSION in Dockerfile.
+    |
+    */
+
+    'github' => [
+        'api_url' => env('LARADOGS_GITHUB_API_URL', 'https://api.github.com'),
+        'server_url' => env('LARADOGS_GITHUB_SERVER_URL', 'https://github.com'),
+        'api_version' => env('LARADOGS_GITHUB_API_VERSION', '2022-11-28'),
+        'check_name' => env('LARADOGS_GITHUB_CHECK_NAME', 'LaraDogs Quality Gate'),
+        'user_agent' => env('LARADOGS_GITHUB_USER_AGENT', 'LaraDogs/'.env('LARADOGS_VERSION', 'dev')),
+        // Bounded so a pathological gate summary can never approach
+        // GitHub's own (much larger, undocumented-exact) output limits —
+        // see docs/integrations/github.md#output-bounds.
+        'summary_max_length' => (int) env('LARADOGS_GITHUB_SUMMARY_MAX_LENGTH', 4000),
     ],
 
     /*

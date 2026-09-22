@@ -14,7 +14,7 @@
 | 7     | Dashboard                            | **Complete** (see below)                                                                                                                                                                                            |
 | 8     | Quality Gates & Policy Engine        | **Complete** (see below; scan-to-scan comparison _report_ deferred)                                                                                                                                                 |
 | 9     | Git & Repository Integration         | **Complete** (local, read-only source metadata + source-integrity fail-closed semantics; see below)                                                                                                                 |
-| 10    | CI & GitHub Integration              | Not started (next agreed major phase — absorbs the former "Git Integration / Continuous Monitoring" hosted-repository scope and the former "CI / GitHub Action")                                                    |
+| 10    | CI & GitHub Integration              | **Complete** for the CI command + GitHub Check Run reporting (see below); hosted-repository scope (GitHub API browsing, webhooks, managed clones, continuous monitoring) remains open                               |
 | 11    | MCP / IDE Integration                | Not started (formerly listed as Phase 9 "MCP")                                                                                                                                                                      |
 | 12    | Remediation Workflow                 | Not started                                                                                                                                                                                                         |
 
@@ -476,6 +476,43 @@ command-scoped `safe.directory`). Scan History/Detail show revision/provenance;
 Docker runtime image now ships `git`. **Not** in this phase: fetch/pull/push,
 GitHub/GitLab API, webhooks, CI, MCP, managed clones. See
 [`../git/README.md`](../git/README.md).
+
+## What Phase 10 actually delivered
+
+**CI & GitHub Integration (CI command + Check Run reporting)** —
+`laradogs:ci:audit` is the one machine-oriented entry point, converging on
+the exact same `RegisterProject` (idempotent) → `RunProjectAudit` →
+persisted Scan → Quality Gate pipeline every other trigger already uses; no
+second audit pipeline exists. Its exit codes reuse Phase 8's contract
+exactly (`0`/`1`/`2` from the gate outcome, `3` operational error — now
+also covering a `--expected-revision` mismatch verified both **before**
+running the audit, against a fresh Git inspection, and **after**, against
+the scan's own immutable `source_revision`, closing the race between the
+two via one pure, directly unit-tested predicate — `4` not evaluated); its
+`gate` JSON block is byte-identical to `laradogs:project:gate`'s
+(`App\Console\Commands\Support\GateResultCliPayload`, extracted so neither
+command can silently drift from the other). `--json` writes only the
+envelope to stdout (proven with a real subprocess, not just an in-process
+call); human progress goes to stderr instead. Phase 9/9.1's
+source-integrity semantics apply unchanged — a dirty or mid-audit-changed
+CI worktree can never yield an absence-based Pass, and a detached HEAD (the
+GitHub Actions default) is fully valid, no branch required. GitHub
+reporting (`--github-report`, `App\Integrations\GitHub`, behind its own
+boundary — never reachable from the Engine/gate/Git layers) creates one
+Check Run per scan: least-privilege token (`GITHUB_TOKEN`, header-only,
+never logged/persisted/in any JSON), an outcome mapping that never lets
+Indeterminate or an operational error look like success, a bounded summary,
+and a GitHub API failure that can never rewrite the audit/gate facts
+(verified: the Scan/Quality Gate rows are untouched on a simulated
+failure) or change the exit code. V1's execution topology is an
+operator-run, self-hosted LaraDogs instance — the existing Docker Compose
+stack, unchanged; no new profile, no ephemeral CI database, no public
+remote-execution endpoint, no self-contained GitHub-hosted-runner
+packaging. **Not** in this phase: GitHub API repository browsing, webhooks,
+managed clones, continuous monitoring, a repository-committed policy file,
+PR finding annotations, MCP, remediation. See
+[`../ci/README.md`](../ci/README.md) and
+[`../integrations/github.md`](../integrations/github.md).
 
 ## Deferred items (noticed during Phase 0, intentionally not built)
 

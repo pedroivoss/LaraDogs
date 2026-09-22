@@ -235,6 +235,17 @@ Full detail: [`docs/architecture/overview.md`](docs/architecture/overview.md),
   Quality Gate pass. Project Detail contrasts the current vs the last audited
   source. LaraDogs never fetches, pulls or contacts a remote. See
   [`docs/git/README.md`](docs/git/README.md).
+- **CI & GitHub integration (Phase 10)** — `laradogs:ci:audit` reuses the
+  exact same audit/Quality Gate pipeline (no second one), verifies the
+  audited revision against an expected commit before and after running,
+  and exits with the same 0/1/2/3/4 contract as `laradogs:project:gate`.
+  `--json` writes nothing but the envelope to stdout. `--github-report`
+  optionally posts a GitHub Check Run (least-privilege token, never
+  logged; a GitHub outage can never change the exit code or the audit's
+  own facts). No public remote-execution endpoint; policy stays
+  operator-owned, never a repository-committed file. See
+  [`docs/ci/README.md`](docs/ci/README.md) and
+  [`docs/integrations/github.md`](docs/integrations/github.md).
 - A Laravel 13 application with React + Inertia (official starter kit)
   and Fortify-based authentication (Phase 0), now serving the real
   Dashboard above (Phase 7) instead of the starter kit's original
@@ -486,17 +497,19 @@ Foundation), Phase 3 (Finding Domain + Persistence, including its 3.1
 Safe-Finding-Resolution-Coverage and 3.2 Persistent-Project-Audit-Workflow
 sub-phases), and Phase 7 (Dashboard, plus its 7.1.1–7.1.4 self-hosting/
 authorization/async-execution sub-phases), Phase 8 (Quality Gates &
-Policy Engine), and Phase 9 (Git & Repository Integration — local, read-only
-source snapshots) are complete. Phase 4
+Policy Engine), Phase 9 (Git & Repository Integration — local, read-only
+source snapshots), and Phase 10 (CI & GitHub Integration — the
+`laradogs:ci:audit` command and GitHub Check Run reporting; the
+hosted-repository scope it absorbed remains open, see
+[`docs/roadmap/phases.md`](docs/roadmap/phases.md)) are complete. Phase 4
 (Security/Dependency Scanners) is in progress — `composer audit`,
 `npm audit`, and Semgrep (foundation + a first Laravel-aware ruleset, 12
 rules) are done (tracked in commit history/ADR notes as sub-phases
 4/4.1/4.2/4.2.1/5/6); other scanners (PHPStan/Larastan, ESLint,
 OSV-Scanner, Trivy) and the COMPREHENSIVE Laravel-aware Semgrep rule
 library are not started. This document's own coarse Phases 5 and 6 (Bug/Quality Analysis,
-Performance Analysis) and the agreed next phases — 10 (CI & GitHub
-Integration), 11 (MCP / IDE Integration) and 12 (Remediation Workflow) — are
-not started. Full list, current position, and items
+Performance Analysis) and the agreed next phases — 11 (MCP / IDE
+Integration) and 12 (Remediation Workflow) — are not started. Full list, current position, and items
 deliberately deferred:
 [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
 

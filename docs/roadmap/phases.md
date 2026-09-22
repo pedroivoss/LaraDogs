@@ -234,14 +234,34 @@ vs last-audited source) and the audit runner; Scan History and Scan Detail
 show revision/provenance. **No** fetch/pull/push, no GitHub/GitLab API, no CI,
 no MCP. See [`../git/README.md`](../git/README.md).
 
-## Phase 10 — CI & GitHub Integration
+## Phase 10 — CI & GitHub Integration ✅ Complete (CI command + Check Run reporting)
 
-The next agreed major phase. Package LaraDogs so a GitHub Actions workflow can
-invoke it as a quality gate on external projects (building on the Phase 8
-`laradogs:project:gate` exit-code contract), and add the hosted-repository
-side (GitHub API, webhooks, managed clones, continuous monitoring) on top of
-Phase 9's local, read-only source snapshot. _Absorbs the former "Git
-Integration / Continuous Monitoring" and "CI / GitHub Action" entries._
+`laradogs:ci:audit` is the one machine-oriented entry point: it converges on
+the exact same pipeline every other trigger uses (`RegisterProject`
+(idempotent) → `RunProjectAudit` → the persisted Scan → its Quality Gate
+result) — no second audit pipeline, no CI-specific analyzer orchestration.
+Its exit codes reuse Phase 8's contract exactly (`0`/`1`/`2` from the gate,
+`3` operational error — including a revision that does not match
+`--expected-revision`, verified both before and after the audit — `4` not
+evaluated); its JSON `gate` block is byte-identical to
+`laradogs:project:gate`'s. Phase 9's source-integrity semantics apply
+unchanged (a dirty/inconsistent CI worktree can never yield an absence-based
+Pass). GitHub reporting (`--github-report`, `App\Integrations\GitHub`) is an
+optional, failure-isolated adapter that creates one Check Run per scan
+(outcome-mapped conclusion, least-privilege `checks: write` token,
+idempotent per scan) — GitHub consumes results, never defines them. V1's
+execution topology is an operator-run, self-hosted LaraDogs instance (the
+existing, unchanged Docker Compose stack); no self-contained
+GitHub-hosted-runner packaging and no public remote-execution endpoint were
+built. See [`../ci/README.md`](../ci/README.md) and
+[`../integrations/github.md`](../integrations/github.md).
+
+**Deliberately not part of this phase** (the hosted-repository scope this
+entry absorbed from the former "Git Integration / Continuous Monitoring"
+title, still open): GitHub API repository browsing, webhooks, managed
+(LaraDogs-owned) clones, continuous "watch and re-audit" monitoring, a
+repository-committed policy file, PR finding annotations, and validated
+GitHub-hosted-runner support.
 
 ## Phase 11 — MCP / IDE Integration
 

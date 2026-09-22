@@ -6,9 +6,9 @@ use App\Audit\Findings\ScanStatus;
 use App\Audit\QualityGates\QualityGateOutcome;
 use App\Audit\QualityGates\Query\ProjectQualityGateQuery;
 use App\Audit\Source\ScanSourceSummary;
+use App\Console\Commands\Support\GateResultCliPayload;
 use App\Models\Audit\Project;
 use App\Models\Audit\QualityGateResult;
-use App\Models\Audit\QualityGateRuleResult;
 use App\Models\Audit\Scan;
 use Illuminate\Console\Command;
 
@@ -101,27 +101,7 @@ final class ProjectGateCommand extends Command
             $this->emitJson([
                 'project' => $project->public_id,
                 'scan' => $scan->public_id,
-                'gate' => [
-                    'outcome' => $result->outcome->value,
-                    'policy_revision' => $result->policy_revision,
-                    'evaluated_at' => $result->evaluated_at->toIso8601String(),
-                    'baseline_scan' => $result->baselineScan?->public_id,
-                    'rules_total' => $result->rules_total,
-                    'rules_failed' => $result->rules_failed,
-                    'rules_indeterminate' => $result->rules_indeterminate,
-                    'rules' => $result->ruleResults->map(fn (QualityGateRuleResult $rule): array => [
-                        'rule_id' => $rule->rule_id->value,
-                        'subject' => $rule->subject,
-                        'outcome' => $rule->outcome->value,
-                        'summary' => $rule->summary,
-                        'observed' => $rule->observed,
-                        'expected' => $rule->expected,
-                        'analyzer_id' => $rule->analyzer_id,
-                        'severity' => $rule->severity,
-                        'finding_count' => $rule->finding_count,
-                        'finding_ids' => $rule->finding_ids ?? [],
-                    ])->all(),
-                ],
+                'gate' => GateResultCliPayload::toArray($result),
                 'exit_code' => $exitCode,
             ]);
 

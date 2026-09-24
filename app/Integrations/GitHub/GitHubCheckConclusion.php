@@ -2,7 +2,7 @@
 
 namespace App\Integrations\GitHub;
 
-use App\Audit\QualityGates\QualityGateOutcome;
+use App\Audit\Ci\CiOutcome;
 
 /**
  * The GitHub Checks API `conclusion` values LaraDogs actually uses — a
@@ -21,31 +21,23 @@ enum GitHubCheckConclusion: string
     case ActionRequired = 'action_required';
 
     /**
-     * `Indeterminate` deliberately maps to `action_required`, not
-     * `neutral`: GitHub's `neutral` reads as "ran, no opinion" and some
-     * branch-protection/UI paths do not visibly block on it, which would
-     * contradict the fail-closed rule that Indeterminate must never look
-     * like a pass. `action_required` is a non-success conclusion that
-     * GitHub itself describes as needing attention — never silently green.
+     * THE canonical mapping (Phase 10.1), from the FINAL CI outcome — never
+     * from the Quality Gate outcome directly, which an operational error can
+     * override (a `Passed` gate with a revision mismatch is exit 3, hence
+     * `failure`, never `success`).
+     *
+     * `Indeterminate` maps to `action_required`, not `neutral`: `neutral`
+     * reads as "ran, no opinion" and some branch-protection/UI paths do not
+     * visibly block on it, which would contradict the fail-closed rule that
+     * Indeterminate must never look like a pass.
      */
-    public static function forGateOutcome(QualityGateOutcome $outcome): self
+    public static function forCiOutcome(CiOutcome $outcome): self
     {
         return match ($outcome) {
-            QualityGateOutcome::Passed => self::Success,
-            QualityGateOutcome::Failed => self::Failure,
-            QualityGateOutcome::Indeterminate => self::ActionRequired,
+            CiOutcome::Passed => self::Success,
+            CiOutcome::Failed, CiOutcome::OperationalError => self::Failure,
+            CiOutcome::Indeterminate => self::ActionRequired,
+            CiOutcome::NotEvaluated => self::Neutral,
         };
-    }
-
-    /** A gate that exists but was never evaluated (disabled) — a real "no opinion". */
-    public static function notEvaluated(): self
-    {
-        return self::Neutral;
-    }
-
-    /** An operational failure (bad revision, audit failure, ...) — never silently green. */
-    public static function operationalFailure(): self
-    {
-        return self::Failure;
     }
 }

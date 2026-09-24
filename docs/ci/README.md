@@ -107,6 +107,17 @@ infrastructure/verification problem vs. "no verdict exists"):
 a disabled gate as a pass — those stay `2` and `4` respectively, distinct
 from `0`.
 
+## Final CI outcome
+
+The exit code is NOT simply the Quality Gate outcome: an operational
+condition discovered after the audit (the persisted revision does not match
+the expected one) overrides a `Passed` gate. That precedence is decided in
+exactly one place — `App\Audit\Ci\CiOutcome::resolve()`, a typed, generic
+value (`Passed`/`Failed`/`Indeterminate`/`OperationalError`/`NotEvaluated`,
+exit codes `0`/`1`/`2`/`3`/`4` — unchanged, no sixth code) that drives the
+process exit code, the JSON `exit_code` and any GitHub Check conclusion
+identically. Generic CI owns the outcome; adapters (GitHub) only map it.
+
 ## Revision verification
 
 CI usually knows the exact commit it expects to audit. `--expected-revision`
@@ -120,8 +131,10 @@ CI usually knows the exact commit it expects to audit. `--expected-revision`
    `source_revision` (captured by `ScanRunner` **before analyzers ran** —
    see [`../git/README.md`](../git/README.md)) is compared again. A
    mismatch here still forces `3`, **even though a real Scan and Gate
-   result now exist** — the JSON envelope still reports them (for
-   debugging), but `exit_code` is `3`, not whatever the gate computed.
+   result now exist** — the JSON envelope still reports them, unmodified
+   (for debugging), but `exit_code` is `3`, not whatever the gate computed,
+   and a `--github-report` Check Run is `failure`, never `success` (see
+   [Final CI outcome](#final-ci-outcome)).
    This is the authoritative check, closing the narrow window between
    check 1 and the audit's own internal snapshot; see
    `App\Console\Commands\Support\CiRevisionVerification` (one pure,
@@ -220,9 +233,22 @@ be able to weaken the gate that judges that PR — policy stays
 
 ## Generic (non-GitHub) CI
 
-`laradogs:ci:audit` has **zero GitHub dependency** unless `--github-report`
-is passed — no GitHub environment variable is even read otherwise, and no
-HTTP request is ever made. Any CI system can use it via exit code + JSON:
+`laradogs:ci:audit` is independent of the GitHub **API** unless
+`--github-report` is passed. Precisely:
+
+Without `--github-report`:
+
+- **no GitHub API request** is ever made and **no Check Run** is created;
+- `GITHUB_TOKEN` is **not read for reporting**, no `Authorization` header
+  exists, and it is not required;
+- the validated **GitHub execution context** is still parsed
+  (`GitHubContext`: `GITHUB_ACTIONS`, `GITHUB_SHA`, …) — under
+  `GITHUB_ACTIONS=true`, `GITHUB_SHA` is used as the **default expected
+  revision** (an explicit `--expected-revision` always wins). Nothing else is
+  done with it, and every value is validated or discarded.
+
+Outside GitHub Actions none of those variables has any effect. Any CI system
+can use the command via exit code + JSON:
 
 ```yaml
 # GitLab CI (illustrative)

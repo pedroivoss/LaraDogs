@@ -2,6 +2,7 @@
 
 namespace App\Integrations\GitHub;
 
+use App\Audit\Ci\CiOutcome;
 use App\Audit\Engine\Execution\ExecutionStatus;
 use App\Audit\QualityGates\QualityGateOutcome;
 use App\Models\Audit\QualityGateResult;
@@ -12,12 +13,13 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Reports ONE scan's Quality Gate result to GitHub as a Check Run — the
- * only place that connects the audit/gate domain to GitHub. It consumes
- * an already-finished {@see Scan} and its (possibly absent)
- * {@see QualityGateResult}; it never evaluates a gate,
- * never runs an analyzer, and never changes either. See
- * docs/integrations/github.md.
+ * Reports ONE scan's FINAL CI outcome ({@see CiOutcome}) to GitHub as a
+ * Check Run — the only place that connects the audit/gate domain to GitHub.
+ * It consumes an already-finished {@see Scan}, its (possibly absent)
+ * {@see QualityGateResult} (summary detail only) and the final outcome the
+ * generic CI layer already decided; it never evaluates a gate, never
+ * re-derives the outcome, never runs an analyzer, and never changes any of
+ * them. See docs/integrations/github.md.
  *
  * Never throws — every failure becomes a {@see GitHubReportResult} with
  * `reported = false`, so a GitHub outage can never affect the CI
@@ -32,10 +34,14 @@ final readonly class RecordGitHubCheckRun
         private ?string $publicUrl,
     ) {}
 
-    public function record(Scan $scan, GitHubContext $context, ?string $token): GitHubReportResult
+    /**
+     * @param  CiOutcome  $outcome  the FINAL CI outcome (generic CI owns it) — this class only maps and reports it,
+     *                              it never reconstructs it from the Scan and Quality Gate
+     */
+    public function record(Scan $scan, CiOutcome $outcome, GitHubContext $context, ?string $token): GitHubReportResult
     {
         try {
-            return $this->attempt($scan, $context, $token);
+            return $this->attempt($scan, $outcome, $context, $token);
         } catch (Throwable) {
             // Defensive: this method must NEVER throw, whatever the cause —
             // an integration failure is data, not an exception the caller
@@ -44,7 +50,7 @@ final readonly class RecordGitHubCheckRun
         }
     }
 
-    private function attempt(Scan $scan, GitHubContext $context, ?string $token): GitHubReportResult
+    private function attempt(Scan $scan, CiOutcome $outcome, GitHubContext $context, ?string $token): GitHubReportResult
     {
         if (! $context->hasRepository()) {
             return GitHubReportResult::notReported('no_github_context');
@@ -66,9 +72,7 @@ final readonly class RecordGitHubCheckRun
         }
 
         $gate = $scan->qualityGateResult;
-        $conclusion = $gate === null
-            ? GitHubCheckConclusion::notEvaluated()
-            : GitHubCheckConclusion::forGateOutcome($gate->outcome);
+        $conclusion = GitHubCheckConclusion::forCiOutcome($outcome);
 
         $result = $this->client->createCheckRun($context, $token, [
             'name' => $this->checkName,
@@ -77,8 +81,8 @@ final readonly class RecordGitHubCheckRun
             'conclusion' => $conclusion->value,
             'external_id' => $scan->public_id,
             'output' => [
-                'title' => $gate === null ? 'Quality Gate not evaluated' : $gate->outcome->label(),
-                'summary' => $this->summary($scan, $gate),
+                'title' => $outcome->label(),
+                'summary' => $this->summary($scan, $outcome, $gate),
             ],
         ]);
 
@@ -97,9 +101,13 @@ final readonly class RecordGitHubCheckRun
         return GitHubReportResult::reported($result->checkRunId, $result->htmlUrl);
     }
 
-    private function summary(Scan $scan, ?QualityGateResult $gate): string
+    private function summary(Scan $scan, CiOutcome $outcome, ?QualityGateResult $gate): string
     {
         $lines = ["Scan `{$scan->public_id}` — commit `".substr((string) $scan->source_revision, 0, 12).'`.'];
+
+        if ($outcome === CiOutcome::OperationalError) {
+            $lines[] = '**Operational error** — the CI run did not produce a trustworthy verdict (for example, the audited revision did not match the expected revision). The Quality Gate detail below is informational only.';
+        }
 
         if ($scan->source_consistent === false) {
             $lines[] = 'Source integrity was not established for this audit — see the LaraDogs docs on source consistency.';

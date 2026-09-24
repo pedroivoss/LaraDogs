@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 10.1: CI Reporting Consistency Hardening
+
+A small corrective pass on Phase 10 — reporting consistency only.
+
+### Fixed
+
+- **A GitHub Check could be `success` while the CI exit code was `3`.** After
+  a post-audit revision mismatch the Check conclusion was still derived from
+  the (Passed) Quality Gate. The conclusion is now derived from the FINAL CI
+  outcome through one canonical mapping.
+- `docs/ci/README.md` wrongly claimed no `GITHUB_*` variable is read without
+  `--github-report`; it now states the precise behavior (validated context
+  and the `GITHUB_SHA` default expected revision are still used; no API
+  request, no Check Run, no token use).
+
+### Changed
+
+- New `App\Audit\Ci\CiOutcome` (generic, GitHub-free): the typed owner of the
+  unchanged `0`/`1`/`2`/`3`/`4` contract and of the "operational error
+  overrides the gate" precedence. `RecordGitHubCheckRun::record()` now takes
+  the final outcome; `GitHubCheckConclusion::forCiOutcome()` replaces the
+  gate-based mapping and the dead `operationalFailure()`/`notEvaluated()`/
+  `forGateOutcome()` helpers were removed.
+- On a post-audit mismatch the JSON envelope now reports the persisted gate
+  result (unmodified) alongside `exit_code: 3`, as documented.
+
+### Added
+
+- Deterministic regression tests (no timing/races): a scripted Git-inspection
+  hook drives the real command through "pre-check matches, persisted revision
+  differs"; a structural test pins the GitHub Actions example's exit-code
+  preservation.
+
+### Unchanged
+
+- Exit codes, Quality Gate semantics, source integrity, Git provenance and
+  Finding reconciliation; GitHub reporting failure still never changes the
+  Scan, the gate result or the exit code.
+
 ## [Unreleased] — Phase 10: CI & GitHub Integration
 
 `laradogs:ci:audit` — one machine-oriented entry point, reusing the audit/

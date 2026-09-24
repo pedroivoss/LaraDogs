@@ -17,8 +17,13 @@ Scan + QualityGateResult  →  RecordGitHubCheckRun  →  GitHubApiClient  →  
                                GitHubContext (validated GITHUB_* env)
 ```
 
-- **`GitHubContext`** — the only place LaraDogs reads `GITHUB_*`
-  environment variables. Every field is strictly validated or `null`;
+- **`GitHubContext`** — the validated GitHub **execution metadata**
+  (`GITHUB_ACTIONS`, `GITHUB_REPOSITORY`, `GITHUB_SHA`, `GITHUB_SERVER_URL`,
+  `GITHUB_API_URL`); the only parser of those variables. The **reporting
+  credential** (`GITHUB_TOKEN`) is deliberately NOT part of it: it is read
+  only at the reporting boundary (`--github-report`), so it never travels
+  with, or is serialized alongside, the context. Every field is strictly
+  validated or `null`;
   nothing is ever used to build a shell command (LaraDogs has no shell
   execution at all). `GITHUB_API_URL`/`GITHUB_SERVER_URL` are read directly
   (falling back to `config('laradogs.github')`) because Actions itself sets
@@ -107,13 +112,21 @@ already shows the workflow step as running.
 
 ## Outcome mapping
 
-| LaraDogs state                                     | GitHub `conclusion` | Why                                                                                                                                                                                                                                                                                                          |
-| -------------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Gate **Passed**                                    | `success`           |                                                                                                                                                                                                                                                                                                              |
-| Gate **Failed**                                    | `failure`           |                                                                                                                                                                                                                                                                                                              |
-| Gate **Indeterminate**                             | `action_required`   | **Not** `neutral`: `neutral` reads as "ran, no opinion" and some branch-protection/UI paths do not visibly block on it — that would contradict the fail-closed rule that Indeterminate must never look like a pass. `action_required` is a non-success conclusion GitHub itself frames as needing attention. |
-| Operational error (bad revision, audit failure, …) | `failure`           | Never silently green.                                                                                                                                                                                                                                                                                        |
-| Gate **disabled** / not evaluated                  | `neutral`           | A genuine "no opinion" — the operator disabled the gate, so LaraDogs correctly asserts nothing either way.                                                                                                                                                                                                   |
+The Check conclusion is derived from the **final CI outcome**
+(`App\Audit\Ci\CiOutcome` — exit code `0`–`4`), through ONE canonical
+mapping (`GitHubCheckConclusion::forCiOutcome()`), **never from the Quality
+Gate outcome directly**: an operational error (for example a post-audit
+revision mismatch, exit `3`) overrides a `Passed` gate, so a `Passed` gate
+with exit `3` is reported as `failure`, never `success`. The Scan and Quality
+Gate result are reported truthfully and never modified to produce this.
+
+| LaraDogs state                                         | GitHub `conclusion` | Why                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Final outcome **Passed** (exit `0`)                    | `success`           |                                                                                                                                                                                                                                                                                                              |
+| Final outcome **Failed** (exit `1`)                    | `failure`           |                                                                                                                                                                                                                                                                                                              |
+| Final outcome **Indeterminate** (exit `2`)             | `action_required`   | **Not** `neutral`: `neutral` reads as "ran, no opinion" and some branch-protection/UI paths do not visibly block on it — that would contradict the fail-closed rule that Indeterminate must never look like a pass. `action_required` is a non-success conclusion GitHub itself frames as needing attention. |
+| **Operational error** (exit `3`: revision mismatch, …) | `failure`           | Never silently green.                                                                                                                                                                                                                                                                                        |
+| **Not evaluated** (exit `4`: gate disabled)            | `neutral`           | A genuine "no opinion" — the operator disabled the gate, so LaraDogs correctly asserts nothing either way.                                                                                                                                                                                                   |
 
 Allowed values researched directly from GitHub's Checks API reference
 (`success`, `failure`, `neutral`, `cancelled`, `skipped`, `timed_out`,

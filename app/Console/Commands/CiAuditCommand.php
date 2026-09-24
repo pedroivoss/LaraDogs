@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Audit\Ci\CiOutcome;
 use App\Audit\Findings\ScanOrigin;
 use App\Audit\Findings\ScanStatus;
 use App\Audit\Projects\RegisterProject;
@@ -41,8 +42,10 @@ use Illuminate\Console\Command;
  *   2  Indeterminate
  *   3  Operational error (bad project path, an audit that could not
  *      complete, or — critically — the audited revision did not match
- *      `--expected-revision`: never report ANY gate verdict for the wrong
- *      commit, even one that was computed correctly for a DIFFERENT one)
+ *      `--expected-revision`. The gate verdict of such a run is still reported
+ *      truthfully in the JSON, but it is NEVER the CI result: the final
+ *      outcome (see {@see CiOutcome}) is `OperationalError`, in the exit code
+ *      and in any GitHub Check alike)
  *   4  Not evaluated (gate disabled, or this scan predates Quality Gates)
  *
  * `--json`: stdout carries ONLY the JSON envelope — nothing else is ever
@@ -108,30 +111,26 @@ final class CiAuditCommand extends Command
             return $this->reportFailure($project, $scan, $expectedRevision, null, "Scan {$scan->public_id} did not complete (status: {$scan->status->value}).");
         }
 
+        // ONE path for every completed scan (Phase 10.1): the FINAL CI
+        // outcome is decided once — an operational condition (the persisted
+        // revision does not match the expected one) overrides whatever the
+        // Quality Gate said — and that single outcome drives the exit code,
+        // the JSON envelope AND the GitHub Check conclusion. The scan and the
+        // gate result are reported truthfully and never modified.
         $mismatched = CiRevisionVerification::mismatched($expectedRevision, $scan->source_revision);
         $revisionVerified = $expectedRevision === null ? null : ! $mismatched;
-
-        if ($mismatched) {
-            return $this->reportFailure(
-                $project,
-                $scan,
-                $expectedRevision,
-                false,
-                "Audited revision {$scan->source_revision} does not match the expected revision {$expectedRevision}.",
-                allowGithubReport: true,
-                context: $context,
-                githubReporter: $githubReporter,
-            );
-        }
-
         $gate = $gateQuery->resultForScan($scan);
-        $exitCode = $gate === null ? ProjectGateCommand::EXIT_NOT_EVALUATED : $gate->outcome->exitCode();
+        $outcome = CiOutcome::resolve($mismatched, $gate?->outcome);
 
-        $github = $this->maybeReportToGithub($scan, $context, $githubReporter);
+        $error = $mismatched
+            ? "Audited revision {$scan->source_revision} does not match the expected revision {$expectedRevision}."
+            : null;
 
-        $this->render($project, $scan, $gate, $expectedRevision, $revisionVerified, $github, $exitCode, null);
+        $github = $this->maybeReportToGithub($scan, $outcome, $context, $githubReporter);
 
-        return $exitCode;
+        $this->render($project, $scan, $gate, $expectedRevision, $revisionVerified, $github, $outcome->exitCode(), $error);
+
+        return $outcome->exitCode();
     }
 
     /**
@@ -195,7 +194,7 @@ final class CiAuditCommand extends Command
     /**
      * @return array<string,mixed>|null
      */
-    private function maybeReportToGithub(Scan $scan, GitHubContext $context, RecordGitHubCheckRun $reporter): ?array
+    private function maybeReportToGithub(Scan $scan, CiOutcome $outcome, GitHubContext $context, RecordGitHubCheckRun $reporter): ?array
     {
         if (! (bool) $this->option('github-report')) {
             return null;
@@ -205,7 +204,7 @@ final class CiAuditCommand extends Command
         // Read ONLY from the environment — never a CLI argument (a token
         // would then appear in `ps`/shell history on a shared runner).
         $token = getenv('GITHUB_TOKEN');
-        $result = $reporter->record($scan, $context, $token === false ? null : $token);
+        $result = $reporter->record($scan, $outcome, $context, $token === false ? null : $token);
 
         return $result->toArray();
     }
@@ -216,19 +215,15 @@ final class CiAuditCommand extends Command
         ?string $expectedRevision,
         ?bool $revisionVerified,
         string $message,
-        bool $allowGithubReport = false,
-        ?GitHubContext $context = null,
-        ?RecordGitHubCheckRun $githubReporter = null,
     ): int {
-        $github = null;
+        // No trustworthy scan/revision exists on these paths (bad path,
+        // pre-audit mismatch, audit that did not run/complete) — nothing to
+        // attach a Check Run to, so nothing is ever reported to GitHub.
+        $exitCode = CiOutcome::OperationalError->exitCode();
 
-        if ($allowGithubReport && $scan !== null && $context !== null && $githubReporter !== null) {
-            $github = $this->maybeReportToGithub($scan, $context, $githubReporter);
-        }
+        $this->render($project, $scan, null, $expectedRevision, $revisionVerified, null, $exitCode, $message);
 
-        $this->render($project, $scan, null, $expectedRevision, $revisionVerified, $github, ProjectGateCommand::EXIT_OPERATIONAL_ERROR, $message);
-
-        return ProjectGateCommand::EXIT_OPERATIONAL_ERROR;
+        return $exitCode;
     }
 
     private function note(string $message): void

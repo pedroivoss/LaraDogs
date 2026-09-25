@@ -42,13 +42,15 @@ final class CurrentFindingsQuery
      *
      * @return LengthAwarePaginator<int, Finding>
      */
-    public function paginateForProject(Project $project, ?FindingFilters $filters = null, int $perPage = 25): LengthAwarePaginator
+    public function paginateForProject(Project $project, ?FindingFilters $filters = null, int $perPage = 25, ?int $page = null): LengthAwarePaginator
     {
         $query = Finding::query()->where('project_id', $project->id);
 
         $this->applyFilters($query, $filters);
 
-        return $query->orderByDesc('last_seen_at')->orderByDesc('id')->paginate($perPage)->withQueryString();
+        // `$page` (Phase 11) lets a non-HTTP adapter (MCP) name the page
+        // explicitly; null keeps the request-driven behavior unchanged.
+        return $query->orderByDesc('last_seen_at')->orderByDesc('id')->paginate($perPage, ['*'], 'page', $page)->withQueryString();
     }
 
     /**
@@ -96,6 +98,10 @@ final class CurrentFindingsQuery
 
         if ($filters->ruleId !== null) {
             $query->where('rule_id', $filters->ruleId);
+        }
+
+        if ($filters->confidence !== null) {
+            $query->whereIn('confidence', $filters->confidence);
         }
     }
 }

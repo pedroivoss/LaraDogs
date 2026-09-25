@@ -2,6 +2,8 @@
 
 namespace App\Audit\Projects\Query;
 
+use App\Audit\Findings\ScanOrigin;
+use App\Audit\Findings\ScanStatus;
 use App\Models\Audit\Project;
 use App\Models\Audit\Scan;
 use Illuminate\Database\Eloquent\Collection;
@@ -41,14 +43,16 @@ final class ScanHistoryQuery
      *
      * @return LengthAwarePaginator<int, Scan>
      */
-    public function paginateFor(Project $project, int $perPage = 20): LengthAwarePaginator
+    public function paginateFor(Project $project, int $perPage = 20, ?int $page = null, ?ScanStatus $status = null, ?ScanOrigin $origin = null): LengthAwarePaginator
     {
         return Scan::query()
             ->where('project_id', $project->id)
+            ->when($status !== null, fn ($q) => $q->where('status', $status))
+            ->when($origin !== null, fn ($q) => $q->where('origin', $origin))
             ->orderByDesc('started_at')
             ->orderByDesc('id')
             ->with('qualityGateResult')
-            ->paginate($perPage)
+            ->paginate($perPage, ['*'], 'page', $page)
             ->withQueryString();
     }
 

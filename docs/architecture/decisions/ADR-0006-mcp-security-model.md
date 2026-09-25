@@ -2,9 +2,21 @@
 
 ## Status
 
-Proposed — no MCP server exists yet (Phase 9+). This ADR records the
-security constraints that must hold once it does, so the credential model
-isn't designed reactively after a real vulnerability report.
+Proposed → **implemented in Phase 11** (see
+[`../../integrations/mcp.md`](../../integrations/mcp.md)). This ADR keeps its
+original text (written before any MCP server existed) as the record of the
+constraints the implementation had to honor; the "Phase 9"/"Phase 10"
+numbers below are the _former_ roadmap numbering (MCP is Phase 11 in the
+current ordering — see the numbering note in
+[`../../roadmap/roadmap.md`](../../roadmap/roadmap.md)).
+
+**Phase 11 implementation notes (what differs from the conceptual text):**
+scopes were simplified to `read` and `audit` (the finer conceptual scopes
+such as `findings:update` are unnecessary while `update_finding_status` is
+deferred); `expires_at` is not implemented; the token format is
+`ldmcp_<public-id>_<secret>` hashed with SHA-256 (justified by the 256-bit
+secret) in table `mcp_tokens`; OAuth/OIDC remains unbuilt and the
+`McpTokenSource`/`McpAuthenticator` seam keeps it possible.
 
 ## Context
 

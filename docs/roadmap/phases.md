@@ -263,11 +263,22 @@ title, still open): GitHub API repository browsing, webhooks, managed
 repository-committed policy file, PR finding annotations, and validated
 GitHub-hosted-runner support.
 
-## Phase 11 — MCP / IDE Integration
+## Phase 11 — MCP / IDE Integration ✅ Complete (stdio MCP server, read + async audit)
 
-Implement the MCP server described in `docs/integrations/mcp.md` against a
-real Finding/Scan implementation, and IDE-facing integration. _(Formerly
-listed as "Phase 9 — MCP".)_
+Implemented the MCP server described in
+[`../integrations/mcp.md`](../integrations/mcp.md) as an **adapter** over
+the existing query/application services: 12 tools (10 read, `run_project_audit`
+asynchronous-only, `get_audit_status`), dedicated hashed `ldmcp_` tokens with
+`read`/`audit` scopes, per-call re-authorization against the owner's
+current role (Owner/Admin may audit, User is read-only), stable public
+ids, project-relative paths, bounded pagination, typed errors, boundary
+redaction and a documented `schema_version: 1`. stdio transport only — no
+public endpoint, no new port. _(Formerly listed as "Phase 9 — MCP".)_
+
+**Deliberately not part of this phase:** `update_finding_status` (deferred),
+remediation/auto-fix (Phase 12), HTTP transport/OAuth, token expiry and UI,
+policy/user management, resources/prompts, any arbitrary
+filesystem/shell/SQL/Git primitive.
 
 ## Phase 12 — Remediation Workflow
 
@@ -281,7 +292,8 @@ Left unnumbered on purpose (see the numbering note in
 - **Authentication / MCP Credentials** _(formerly Phase 10)_ — harden the auth
   model beyond the starter-kit default (see
   `docs/architecture/security-model.md`'s known limitation on public
-  registration); implement MCP credential issuance/scoping per ADR-0006.
+  registration); MCP credential issuance/scoping per ADR-0006 was delivered in Phase 11
+  (see `integrations/mcp.md`); the broader auth-model hardening remains open.
 - **Hardening / Release** _(formerly Phase 13)_ — security review, RBAC, rate
   limiting, audit logging, CSP/headers, and whatever else accumulated as a
   "deferred to hardening" note across prior phases (see `roadmap.md`'s

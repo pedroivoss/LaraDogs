@@ -25,7 +25,7 @@ export type FindingStatus =
 
 export type ScanStatus = 'queued' | 'running' | 'completed' | 'failed';
 
-export type ScanOrigin = 'manual' | 'scheduled' | 'cli';
+export type ScanOrigin = 'manual' | 'scheduled' | 'cli' | 'mcp';
 
 export type AnalyzerCategory =
     | 'security'

@@ -13,6 +13,8 @@ use App\Audit\QualityGates\EvaluateQualityGateWhenScanFinishes;
 use App\Audit\Source\Git\GitRepositoryInspector;
 use App\Integrations\GitHub\GitHubApiClient;
 use App\Integrations\GitHub\RecordGitHubCheckRun;
+use App\Mcp\Auth\EnvironmentMcpTokenSource;
+use App\Mcp\Auth\McpTokenSource;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Date;
@@ -39,6 +41,10 @@ class AppServiceProvider extends ServiceProvider
             budgetSeconds: (int) config('laradogs.git.budget_seconds'),
             home: (string) config('laradogs.git.home'),
         ));
+
+        // MCP (Phase 11): the caller's credential comes from the process
+        // environment (stdio); a seam so authorization never depends on it.
+        $this->app->bind(McpTokenSource::class, EnvironmentMcpTokenSource::class);
 
         // GitHub integration (Phase 10): consumes CI/Quality Gate results,
         // never defines them — see App\Integrations\GitHub's own docblocks.

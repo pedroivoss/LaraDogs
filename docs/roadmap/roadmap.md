@@ -15,15 +15,16 @@
 | 8     | Quality Gates & Policy Engine        | **Complete** (see below; scan-to-scan comparison _report_ deferred)                                                                                                                                                 |
 | 9     | Git & Repository Integration         | **Complete** (local, read-only source metadata + source-integrity fail-closed semantics; see below)                                                                                                                 |
 | 10    | CI & GitHub Integration              | **Complete** for the CI command + GitHub Check Run reporting (see below); hosted-repository scope (GitHub API browsing, webhooks, managed clones, continuous monitoring) remains open                               |
-| 11    | MCP / IDE Integration                | Not started (formerly listed as Phase 9 "MCP")                                                                                                                                                                      |
+| 11    | MCP / IDE Integration                | **Complete** (stdio MCP server: read tools + async audit queuing, dedicated tokens; see below; `update_finding_status` deferred to Phase 12)                                                                        |
 | 12    | Remediation Workflow                 | Not started                                                                                                                                                                                                         |
 
 **Numbering note (Phase 9.1).** After Phase 9 the agreed order is 10 → CI &
 GitHub Integration, 11 → MCP / IDE Integration, 12 → Remediation Workflow.
 Two previously listed items are **not yet placed** in that order and are left
 unnumbered rather than silently renumbered: **Authentication / MCP
-Credentials** (formerly Phase 10) and **Hardening / Release** (formerly
-Phase 13). Older documents (`integrations/mcp.md`, ADR-0001, ADR-0006,
+Credentials** (formerly Phase 10; its MCP-credential half was delivered
+inside Phase 11, the broader auth-model hardening remains open) and
+**Hardening / Release** (formerly Phase 13). Older documents (`integrations/mcp.md`, ADR-0001, ADR-0006,
 `architecture/security-model.md`, `auditing/findings-lifecycle.md`, the
 "Deferred items" below, the `ActorType` docblock) still use the _former_
 numbers (MCP = 9, Auth/MCP credentials = 10, CI = 12, Hardening = 13); they
@@ -476,6 +477,22 @@ command-scoped `safe.directory`). Scan History/Detail show revision/provenance;
 Docker runtime image now ships `git`. **Not** in this phase: fetch/pull/push,
 GitHub/GitLab API, webhooks, CI, MCP, managed clones. See
 [`../git/README.md`](../git/README.md).
+
+## What Phase 11 actually delivered
+
+The LaraDogs MCP server (`php artisan laradogs:mcp`, stdio, built on
+`laravel/mcp`): 12 tools — ten read (projects, profile, source provenance,
+scans, findings, Quality Gates) and `run_project_audit` (asynchronous only,
+through the existing enqueue + one-active-scan mutex) with
+`get_audit_status`. Dedicated hashed MCP tokens (`ldmcp_<id>_<secret>`,
+`read`/`audit` scopes) managed by `laradogs:mcp:token-*`; authorization
+re-evaluated against the token owner's _current_ role on every call; stable
+public ids, project-relative paths only, bounded pagination, typed errors,
+boundary redaction, `schema_version: 1`. New `ScanOrigin::Mcp`. No public
+endpoint, no new port, no resources/prompts. Deliberately **not** delivered:
+finding-status changes, policy/user management, remediation, any
+filesystem/shell/Git/SQL primitive, HTTP transport, token UI/expiry. See
+[`../integrations/mcp.md`](../integrations/mcp.md).
 
 ## What Phase 10 actually delivered
 

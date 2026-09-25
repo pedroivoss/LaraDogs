@@ -486,8 +486,18 @@ a complete, useful audit with zero AI involvement. Where AI helps — mainly
 through MCP, letting a coding agent query findings and remediation context
 — it sits strictly on top of deterministic output the core already
 produced, and it does not get to edit your project's code by default; the
-calling agent does that, using context LaraDogs provides. See
-[`docs/integrations/mcp.md`](docs/integrations/mcp.md) and
+calling agent does that, using context LaraDogs provides.
+
+**MCP server (Phase 11).** `php artisan laradogs:mcp` speaks MCP over stdio
+(no network port) so Claude Code, Cursor, VS Code or any MCP client can list
+projects, scans, findings and Quality Gates and — for an Owner/Admin token
+with the `audit` scope — queue an audit (asynchronously; the client polls
+`get_audit_status`). Access uses a dedicated hashed token
+(`php artisan laradogs:mcp:token-create <email> --name=… --scope=read|audit`,
+passed to the client as `LARADOGS_MCP_TOKEN`), authorized against the token
+owner's current role on every call. Remediation is not implemented (Phase 12).
+See [`docs/integrations/mcp.md`](docs/integrations/mcp.md) (setup, tool
+catalog, security boundary) and
 [ADR-0006](docs/architecture/decisions/ADR-0006-mcp-security-model.md).
 
 ## Roadmap
@@ -501,15 +511,17 @@ Policy Engine), Phase 9 (Git & Repository Integration — local, read-only
 source snapshots), and Phase 10 (CI & GitHub Integration — the
 `laradogs:ci:audit` command and GitHub Check Run reporting; the
 hosted-repository scope it absorbed remains open, see
-[`docs/roadmap/phases.md`](docs/roadmap/phases.md)) are complete. Phase 4
+[`docs/roadmap/phases.md`](docs/roadmap/phases.md)), and Phase 11 (MCP / IDE
+Integration — the stdio MCP server, read tools and async audit queuing) are
+complete. Phase 4
 (Security/Dependency Scanners) is in progress — `composer audit`,
 `npm audit`, and Semgrep (foundation + a first Laravel-aware ruleset, 12
 rules) are done (tracked in commit history/ADR notes as sub-phases
 4/4.1/4.2/4.2.1/5/6); other scanners (PHPStan/Larastan, ESLint,
 OSV-Scanner, Trivy) and the COMPREHENSIVE Laravel-aware Semgrep rule
 library are not started. This document's own coarse Phases 5 and 6 (Bug/Quality Analysis,
-Performance Analysis) and the agreed next phases — 11 (MCP / IDE
-Integration) and 12 (Remediation Workflow) — are not started. Full list, current position, and items
+Performance Analysis) and the agreed next phase — 12 (Remediation
+Workflow) — are not started. Full list, current position, and items
 deliberately deferred:
 [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
 

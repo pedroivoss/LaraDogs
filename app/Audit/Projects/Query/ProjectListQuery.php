@@ -4,7 +4,9 @@ namespace App\Audit\Projects\Query;
 
 use App\Audit\Findings\FindingStatus;
 use App\Models\Audit\Project;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
  * Backs the project list (CLI today; Dashboard/MCP adapters later).
@@ -21,12 +23,30 @@ final class ProjectListQuery
      */
     public function all(): Collection
     {
+        return $this->query()->get();
+    }
+
+    /**
+     * The same data, bounded — for adapters that must never load an
+     * unbounded list (MCP, Phase 11). Ordered by name, then id (stable).
+     *
+     * @return LengthAwarePaginator<int, Project>
+     */
+    public function paginate(int $perPage, int $page): LengthAwarePaginator
+    {
+        return $this->query()->orderBy('id')->paginate($perPage, ['*'], 'page', $page);
+    }
+
+    /**
+     * @return Builder<Project>
+     */
+    private function query(): Builder
+    {
         return Project::query()
             ->with('latestScan')
             ->withCount(['findings as open_findings_count' => function ($query): void {
                 $query->whereIn('status', [FindingStatus::Open, FindingStatus::Confirmed]);
             }])
-            ->orderBy('name')
-            ->get();
+            ->orderBy('name');
     }
 }

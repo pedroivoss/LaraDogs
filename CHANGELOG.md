@@ -6,6 +6,55 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 11: MCP / IDE Integration
+
+The LaraDogs MCP server: an adapter over the existing query/application
+services so coding agents can inspect projects, scans, findings and Quality
+Gates and (Owner/Admin only) queue an audit. Documented in
+[`docs/integrations/mcp.md`](docs/integrations/mcp.md).
+
+### Added
+
+- `php artisan laradogs:mcp` — stdio MCP server (`laravel/mcp` ^1.0). stdout is
+  protocol-only (diagnostics on stderr), EOF is a clean shutdown, a missing or
+  invalid token exits non-zero before any protocol output. No HTTP endpoint,
+  no new host port.
+- Twelve tools, `schema_version: 1`: `laradogs.list_projects`, `get_project`,
+  `get_project_profile`, `get_project_source`, `list_scans`, `get_scan`,
+  `list_findings`, `get_finding`, `get_quality_gate`, `get_scan_quality_gate`,
+  `run_project_audit` (asynchronous only, through `RunProjectAudit::enqueue()`
+  and the one-active-scan mutex; typed `audit_already_running`) and
+  `get_audit_status`.
+- Dedicated MCP tokens (`ldmcp_<public-id>_<secret>`): table `mcp_tokens`,
+  SHA-256 hash only, shown once, `read`/`audit` scopes, `last_used_at`,
+  `revoked_at`; CLI `laradogs:mcp:token-create|list|revoke`. No default tokens.
+- Central authorizer `McpAccess`: token scope AND the owner's current
+  role/activation on every call (Owner/Admin may audit; `User` is read-only).
+- `ScanOrigin::Mcp` — provenance for audits queued through MCP (additive; the
+  column is a string, no data migration).
+- Typed error contract (`unauthenticated`, `forbidden`, `invalid_arguments`,
+  `*_not_found`, `audit_already_running`, `temporarily_unavailable`,
+  `internal_error`), bounded pagination (default 25, max 100), boundary
+  redaction (`McpSanitizer`), project-relative paths only, no user identities.
+- Tests: token, project/scan/finding/gate tools, run-audit and status,
+  security/prompt-injection surface, and real-subprocess stdio protocol tests.
+
+### Changed
+
+- Additive query-layer parameters (page number, confidence filter, scan
+  status/origin filters, explicit-page project list) used by both the
+  Dashboard and MCP; the Dashboard's source-overview payload was extracted
+  to `App\Http\Support\SourceOverviewPayload` so MCP reuses it unchanged.
+- Docs: `docs/integrations/mcp.md` rewritten from "planned" to the canonical
+  reference; roadmap/phases/README/security-model updated; ADR-0006 marked
+  implemented with its original text and former phase numbers preserved.
+
+### Not included
+
+- `update_finding_status` (deferred), remediation/auto-fix (Phase 12), HTTP
+  transport/OAuth, token expiry or Dashboard token UI, policy/user
+  management, resources/prompts, any filesystem/shell/SQL/Git/Artisan tool.
+
 ## [Unreleased] — Phase 10.1: CI Reporting Consistency Hardening
 
 A small corrective pass on Phase 10 — reporting consistency only.

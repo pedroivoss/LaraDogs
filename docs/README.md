@@ -134,8 +134,11 @@ Implemented/Planned split.
   (Phase 10).** GitHub Check Run reporting on top of `laradogs:ci:audit`:
   architecture boundary, authentication, outcome mapping, failure
   isolation, fork-PR security, pull request SHA semantics.
-- [`integrations/mcp.md`](integrations/mcp.md) — the MCP interface's
-  intended shape and security model (Phase 9-10, not built yet).
+- [`integrations/mcp.md`](integrations/mcp.md) — **Implemented
+  (Phase 11).** The MCP server (`laradogs:mcp`, stdio): tool catalog and
+  `schema_version: 1` contract, token authentication, scopes, error
+  contract, redaction/untrusted-content boundary, Claude Code and Docker
+  configuration.
 
 ## Roadmap
 

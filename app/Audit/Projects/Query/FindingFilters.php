@@ -3,6 +3,7 @@
 namespace App\Audit\Projects\Query;
 
 use App\Audit\Engine\Contracts\AnalyzerCategory;
+use App\Audit\Findings\Confidence;
 use App\Audit\Findings\FindingStatus;
 use App\Audit\Findings\Severity;
 
@@ -18,6 +19,7 @@ final readonly class FindingFilters
      * @param  list<FindingStatus>|null  $status
      * @param  list<Severity>|null  $severity
      * @param  list<AnalyzerCategory>|null  $category
+     * @param  list<Confidence>|null  $confidence
      */
     public function __construct(
         public ?array $status = null,
@@ -25,5 +27,6 @@ final readonly class FindingFilters
         public ?array $category = null,
         public ?string $analyzerId = null,
         public ?string $ruleId = null,
+        public ?array $confidence = null,
     ) {}
 }

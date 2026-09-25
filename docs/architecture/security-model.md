@@ -46,18 +46,35 @@ model**, and carries a known gap worth flagging explicitly:
 > likely wants registration disabled or invite-only before real findings
 > (including redacted secrets, file paths, code snippets) are stored
 > behind it. This is deliberately **not changed in Phase 0** — hardening
-> the auth model is explicit scope for Phase 10 (Authentication / MCP
-> Credentials), once there's something worth protecting. Anyone deploying
+> the auth model is explicit scope for the not-yet-placed "Authentication"
+> item (MCP credentials shipped in Phase 11), once there's something worth protecting. Anyone deploying
 > this Phase 0 foundation beyond local development should disable
 > registration first (see Fortify's `Features::registration()` toggle in
 > `config/fortify.php`).
 
-## MCP (planned, not built)
+## MCP (Phase 11)
 
-See [ADR-0006](decisions/ADR-0006-mcp-security-model.md) for the full
-model: per-client credentials, one-time secret display, hashed storage,
-scopes, no default code-editing capability. None of this exists yet —
-there is no MCP server in this repository.
+The MCP server ([`../integrations/mcp.md`](../integrations/mcp.md)) honors
+the constraints recorded in
+[ADR-0006](decisions/ADR-0006-mcp-security-model.md) (per-client credentials,
+one-time secret display, hashed storage, scopes, no default code-editing
+capability). Security properties, all covered by tests:
+
+- **Transport:** stdio only. No public/unauthenticated HTTP endpoint, no new
+  host port. stdout is protocol-only.
+- **Credential:** dedicated `ldmcp_<id>_<secret>` token (256-bit secret),
+  SHA-256 hash at rest, constant-time comparison, shown once, revocable,
+  never logged; one generic `unauthenticated` error for every failure mode.
+- **Authorization:** token scope (`read`/`audit`) AND the owner's _current_
+  role/activation, evaluated on every call; only Owner/Admin may queue audits.
+- **Surface:** twelve fixed tools; no filesystem/shell/SQL/Git/Artisan
+  primitive, no target-code execution, no remediation. Audits are
+  asynchronous, through the existing mutex.
+- **Data:** stable public ids, project-relative paths only, bounded lists,
+  evidence re-redacted at the boundary, no user identities, generic
+  `internal_error`.
+- **Prompt injection:** tool metadata is static; project-derived text is
+  confined to data fields and labeled `untrusted_source_data`.
 
 ## What was verified in Phase 0
 

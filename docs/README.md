@@ -134,6 +134,11 @@ Implemented/Planned split.
   (Phase 10).** GitHub Check Run reporting on top of `laradogs:ci:audit`:
   architecture boundary, authentication, outcome mapping, failure
   isolation, fork-PR security, pull request SHA semantics.
+- [`remediation/README.md`](remediation/README.md) — **Implemented
+  (Phase 12, guidance only).** Deterministic remediation plans for findings:
+  schema, rule-owned guidance, lifecycle and source-provenance semantics,
+  Quality Gate impact, Dashboard/CLI/MCP surfaces, security boundary, and what
+  is deliberately not built (patches, auto-fix, PRs, AI).
 - [`integrations/mcp.md`](integrations/mcp.md) — **Implemented
   (Phase 11).** The MCP server (`laradogs:mcp`, stdio): tool catalog and
   `schema_version: 1` contract, token authentication, scopes, error

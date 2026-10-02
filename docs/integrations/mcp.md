@@ -1,7 +1,7 @@
 # MCP / IDE Integration
 
-**Status: Implemented (Phase 11).** Tool contract `schema_version: 1`,
-server version `1.0.0`, transport **stdio**.
+**Status: Implemented (Phase 11; remediation tool added in Phase 12).** Tool
+contract `schema_version: 1`, server version `1.1.0`, transport **stdio**.
 
 LaraDogs exposes its audit data to coding agents (Claude Code, Cursor,
 VS Code, any MCP client) through a Model Context Protocol server. It is an
@@ -33,10 +33,10 @@ package (server, stdio transport, schema and testing API).
 
 ## Scope of V1
 
-| Kind   | Tools                                                                                                                                                                                       |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Read   | `laradogs.list_projects`, `get_project`, `get_project_profile`, `get_project_source`, `list_scans`, `get_scan`, `list_findings`, `get_finding`, `get_quality_gate`, `get_scan_quality_gate` |
-| Action | `laradogs.run_project_audit` (asynchronous only), `laradogs.get_audit_status`                                                                                                               |
+| Kind   | Tools                                                                                                                                                                                                                               |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Read   | `laradogs.list_projects`, `get_project`, `get_project_profile`, `get_project_source`, `list_scans`, `get_scan`, `list_findings`, `get_finding`, `get_finding_remediation` _(Phase 12)_, `get_quality_gate`, `get_scan_quality_gate` |
+| Action | `laradogs.run_project_audit` (asynchronous only), `laradogs.get_audit_status`                                                                                                                                                       |
 
 Tools only — **no resources, no prompts** (smaller attack surface).
 
@@ -45,8 +45,10 @@ tool): changing a finding's status (`update_finding_status` is deferred —
 it needs a scope/actor/provenance design of its own), policy mutation, user
 management, arbitrary SQL/filesystem/shell/Artisan/Git access, executing
 the audited project's code, auto-fix, PR/issue creation, `git
-checkout`/`fetch`/`pull`. Remediation belongs to Phase 12; the MCP server
-supplies context and the _calling agent_ edits code.
+checkout`/`fetch`/`pull`. The MCP server supplies context and guidance
+(including the Phase 12 remediation plan, which is **guidance only**); the
+_calling agent_ edits code with its own capabilities — LaraDogs has no apply,
+patch, edit or fix tool.
 
 ## Transport: stdio
 
@@ -151,18 +153,19 @@ Conventions common to all tools:
 
 ### Read tools
 
-| Tool                             | Arguments                                                                                                            | Returns                                                                                                                                                                                                                  |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `laradogs.list_projects`         | `limit?`, `page?`                                                                                                    | Project summaries (framework, open-finding count, last scan, quality-gate status) + pagination. Computed with aggregate queries (no N+1, no Git subprocess per row).                                                     |
-| `laradogs.get_project`           | `project_id`                                                                                                         | One project summary.                                                                                                                                                                                                     |
-| `laradogs.get_project_profile`   | `project_id`, `scan_id?`                                                                                             | Technology profile snapshot (latest, or the given scan's).                                                                                                                                                               |
-| `laradogs.get_project_source`    | `project_id`                                                                                                         | Source state with Phase 9 semantics: the **current** repository state versus the state of the **last audited** scan, and their consistency. Read-only; may run bounded local Git metadata reads for this single project. |
-| `laradogs.list_scans`            | `project_id`, `status?`, `origin?`, `limit?`, `page?`                                                                | Scan summaries + pagination.                                                                                                                                                                                             |
-| `laradogs.get_scan`              | `scan_id`                                                                                                            | Scan detail incl. source provenance, execution summary and gate summary.                                                                                                                                                 |
-| `laradogs.list_findings`         | `project_id`, `status[]?`, `severity[]?`, `category[]?`, `confidence[]?`, `analyzer?`, `rule_id?`, `limit?`, `page?` | Current findings (summary + latest project-relative location) + pagination.                                                                                                                                              |
-| `laradogs.get_finding`           | `finding_id`                                                                                                         | Finding detail: redacted evidence, bounded occurrences (max 5), bounded status history (max 10, **without actor identity**), references (max 10).                                                                        |
-| `laradogs.get_quality_gate`      | `project_id`                                                                                                         | The project's gate policy (or `enabled: false`) and latest result.                                                                                                                                                       |
-| `laradogs.get_scan_quality_gate` | `scan_id`                                                                                                            | The **persisted** gate result of that scan (`evaluated` flag). **Never re-evaluated**: history is immutable even if the policy changed since.                                                                            |
+| Tool                               | Arguments                                                                                                            | Returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `laradogs.list_projects`           | `limit?`, `page?`                                                                                                    | Project summaries (framework, open-finding count, last scan, quality-gate status) + pagination. Computed with aggregate queries (no N+1, no Git subprocess per row).                                                                                                                                                                                                                                                                                                                                        |
+| `laradogs.get_project`             | `project_id`                                                                                                         | One project summary.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `laradogs.get_project_profile`     | `project_id`, `scan_id?`                                                                                             | Technology profile snapshot (latest, or the given scan's).                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `laradogs.get_project_source`      | `project_id`                                                                                                         | Source state with Phase 9 semantics: the **current** repository state versus the state of the **last audited** scan, and their consistency. Read-only; may run bounded local Git metadata reads for this single project.                                                                                                                                                                                                                                                                                    |
+| `laradogs.list_scans`              | `project_id`, `status?`, `origin?`, `limit?`, `page?`                                                                | Scan summaries + pagination.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `laradogs.get_scan`                | `scan_id`                                                                                                            | Scan detail incl. source provenance, execution summary and gate summary.                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `laradogs.list_findings`           | `project_id`, `status[]?`, `severity[]?`, `category[]?`, `confidence[]?`, `analyzer?`, `rule_id?`, `limit?`, `page?` | Current findings (summary + latest project-relative location) + pagination.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `laradogs.get_finding`             | `finding_id`                                                                                                         | Finding detail: redacted evidence, bounded occurrences (max 5), bounded status history (max 10, **without actor identity**), references (max 10).                                                                                                                                                                                                                                                                                                                                                           |
+| `laradogs.get_finding_remediation` | `finding_id`                                                                                                         | _(Phase 12)_ The deterministic, **guidance-only** remediation plan: recommended action, ordered steps, limitations, validation actions, safe `https` references, warnings (source changed, resolved finding, …), lifecycle, Phase 9 source state and persisted Quality Gate impact. `finding`/`evidence` are `content_trust: "untrusted_source_data"`; `guidance` is LaraDogs-authored. Read scope only. Never edits code or runs commands. Schema: [`../remediation/README.md`](../remediation/README.md). |
+| `laradogs.get_quality_gate`        | `project_id`                                                                                                         | The project's gate policy (or `enabled: false`) and latest result.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `laradogs.get_scan_quality_gate`   | `scan_id`                                                                                                            | The **persisted** gate result of that scan (`evaluated` flag). **Never re-evaluated**: history is immutable even if the policy changed since.                                                                                                                                                                                                                                                                                                                                                               |
 
 ### Action tools
 
@@ -347,17 +350,21 @@ SQLite/MySQL). User emails are never exposed through MCP.
   design (see ADR-0006's note on keeping the door open for OAuth/OIDC).
 - The token is per-process (environment); token expiry (`expires_at`) and
   finer scopes than `read`/`audit` are not implemented.
-- No `update_finding_status` (deferred); no resources/prompts; no
+- No `update_finding_status` (deferred); no apply/patch/edit/fix tool; no resources/prompts; no
   streaming/progress notifications (poll `get_audit_status`).
 - No Dashboard UI for token management.
 - Only Claude Code was used as a real client in Phase 11.
 
 ## Relationship to the roadmap
 
-Phase 11 delivers **read access + controlled audit queuing**. Remediation
-(status changes, fix workflows) is **Phase 12** and is not started; the
-MCP contract above is designed so those tools can be added under
-`schema_version: 1` without changing existing ones. The older
+Phase 11 delivers **read access + controlled audit queuing**; Phase 12 added
+the read-only, **guidance-only** `get_finding_remediation` (additive within
+`schema_version: 1`; server version `1.0.0` → `1.1.0`; no new scope). Applying
+fixes, patch generation and status-changing tools (`update_finding_status`)
+are **not** part of the MCP surface and would each need their own design.
+The intended workflow is `get_finding` → `get_finding_remediation` → the
+client proposes a change to a human → the developer edits → `run_project_audit`
+→ `get_audit_status` → `get_scan_quality_gate`. The older
 [ADR-0006](../architecture/decisions/ADR-0006-mcp-security-model.md) records
 the original binding constraints (per-client credentials, one-time display,
 hashed storage, no default code editing); Phase 11 satisfies them with the

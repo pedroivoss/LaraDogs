@@ -6,6 +6,71 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 LaraDogs does not yet have versioned releases (pre-1.0, early development)
 — entries are grouped by roadmap phase until the first tagged release.
 
+## [Unreleased] — Phase 12: Remediation Workflow (guidance only)
+
+A deterministic, read-only answer to "what should I do about this finding?".
+LaraDogs advises; it never edits code. Documented in
+[`docs/remediation/README.md`](docs/remediation/README.md).
+
+### Added
+
+- `App\Audit\Remediation`: `FindingRemediationQuery` (bounded, read-only loading)
+  → `RemediationEvidence` → pure `RemediationPlanner` → typed, bounded,
+  versioned `RemediationPlan` (`automation_level: guidance_only` — the only
+  level; no patch/auto-fix level exists). Not persisted.
+- `RuleRemediationCatalog`: trusted, LaraDogs-authored `summary`/`action`/
+  `steps`/`limitations` for all 12 bundled rules, in lockstep (tests) with
+  `SemgrepRuleCatalog` and the bundled ruleset's `metadata.remediation` text.
+- Composer/npm advisory guidance from persisted evidence only (npm fixed
+  version / semver-major / no-fix / transitive; Composer affected range; no
+  invented fixed versions; no registry or package-manager calls).
+- Lifecycle-aware plans (open/confirmed actionable; resolved/false-positive/
+  ignored/accepted-risk reference only), Phase 9 source-state (`same_revision`,
+  `changed_since_finding`, `dirty`, `unavailable`, `not_versioned`, `unknown`)
+  with warnings, and Quality Gate impact from the persisted result
+  (`blocking`/`non_blocking`/`not_evaluated`/`undetermined`; never re-evaluated).
+- Dashboard: a _Remediation_ section on Finding Detail (escaped text only,
+  https-only links, no edit/apply control).
+- CLI: `laradogs:finding:remediation {finding} [--json]` (pure JSON stdout).
+- MCP: `laradogs.get_finding_remediation` (read scope only; catalog 12 → 13;
+  server version 1.1.0).
+- Tests: planner/catalog/reference/redaction/prompt-injection unit tests,
+  DB-backed provenance/gate/dependency tests over real Git repositories,
+  Dashboard, CLI (incl. real-process JSON purity), MCP, and an architectural
+  no-write/no-process/no-network guard.
+
+### Changed
+
+- The evidence sanitizer moved to `App\Audit\Findings\Redaction\OutputSanitizer`
+  (one path for MCP, Dashboard and CLI); `McpSanitizer` delegates to it with an
+  unchanged API.
+- Finding Detail no longer renders the raw persisted `recommendation` block or
+  the unvalidated reference list; both are replaced by the Remediation section.
+
+### Not included
+
+- Patch generation, auto-fix, PR/issue creation, codemods, package upgrades run
+  by LaraDogs, running target tests/commands, LLM integration, status-changing
+  MCP tools, a "guidance available" indicator on finding lists.
+
+### Phase 12.1 — Output Privacy & Reference Hardening
+
+A small corrective pass, presentation-layer only (no domain/history change):
+
+- Finding Detail no longer sends the raw, unvalidated `finding.references` to
+  the browser at all (it was an unused prop); `remediation.references`
+  (`SafeReference`-filtered — the same canonical policy `get_finding` and the
+  remediation plan already use) is now the only reference data the page
+  receives.
+- Finding status history: `actor_identifier` is withheld (`null`, with a
+  neutral `actor_label: "Privileged user"`) from any viewer who is not the
+  Owner, when the recorded actor is the _current_ Owner — matching the
+  Owner-invisibility invariant `UsersController` already establishes. Every
+  other actor (Admin, User, System) remains visible exactly as before; the
+  Owner still sees their own identity; internal persisted history is
+  untouched. MCP already withheld all actor identity unconditionally
+  (Phase 11) and needed no change.
+
 ## [Unreleased] — Phase 11: MCP / IDE Integration
 
 The LaraDogs MCP server: an adapter over the existing query/application

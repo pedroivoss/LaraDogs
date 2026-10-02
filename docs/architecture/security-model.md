@@ -67,7 +67,7 @@ capability). Security properties, all covered by tests:
   never logged; one generic `unauthenticated` error for every failure mode.
 - **Authorization:** token scope (`read`/`audit`) AND the owner's _current_
   role/activation, evaluated on every call; only Owner/Admin may queue audits.
-- **Surface:** twelve fixed tools; no filesystem/shell/SQL/Git/Artisan
+- **Surface:** thirteen fixed tools (Phase 12 added one read-only remediation-guidance tool); no filesystem/shell/SQL/Git/Artisan
   primitive, no target-code execution, no remediation. Audits are
   asynchronous, through the existing mutex.
 - **Data:** stable public ids, project-relative paths only, bounded lists,
@@ -75,6 +75,50 @@ capability). Security properties, all covered by tests:
   `internal_error`.
 - **Prompt injection:** tool metadata is static; project-derived text is
   confined to data fields and labeled `untrusted_source_data`.
+
+## Remediation guidance (Phase 12)
+
+Remediation ([`../remediation/README.md`](../remediation/README.md)) is
+**deterministic guidance only**. Security properties, covered by tests:
+
+- **No target mutation, no execution:** the remediation namespace, its MCP
+  tool and CLI command contain no file-write, process, Git-write, network or
+  persistence-write primitive (parsed-token architectural guard); the planner
+  is pure (no database, models, Git, container or config). Package-manager
+  upgrades, target tests and target commands are never run.
+- **No AI:** no model dependency or HTTP client; nothing is sent anywhere.
+- **Untrusted evidence stays data:** finding text is sanitized by the single
+  shared `OutputSanitizer` (secrets redacted, host paths masked, control
+  characters stripped, bounded), never evaluated or interpolated into a
+  shell/template, and confined to `finding`/`evidence` fields tagged
+  `untrusted_source_data`. The persisted `recommendation` is never trusted for
+  guidance; guidance comes only from LaraDogs constants for the bundled rules.
+- **Reference safety:** `https` only; `javascript:`, `data:`, `file:`, `http:`,
+  protocol-relative and credentialed URLs dropped; never fetched. The Dashboard
+  also refuses non-https links and uses `rel="noopener noreferrer"`.
+- **Authorization unchanged:** MCP `get_finding_remediation` needs only a valid
+  read-scope token (the same semantics as `get_finding`); no new scope, no
+  write capability. The Dashboard route keeps its existing authentication.
+
+**Output/privacy hardening (Phase 12.1).** Two corrections, presentation-layer
+only (no domain/history change):
+
+- **One public-reference policy.** `App\Audit\Remediation\SafeReference` is
+  the single canonical filter (`https` only, valid host, no credentials, no
+  control characters, bounded length/count, never fetched) used by the
+  remediation plan, `laradogs.get_finding` and the Dashboard alike — never a
+  second, weaker sanitizer. Finding Detail no longer sends the raw, persisted
+  `finding.references` to the browser at all (it was an unused, unvalidated
+  prop); only the already-filtered `remediation.references` reaches the page.
+- **Owner identity in finding status history.** `status_history.actor_identifier`
+  is compared against the _current_ Owner's email (single-Owner invariant) and
+  withheld — `null` with a neutral `actor_label: "Privileged user"` — from any
+  viewer who is not the Owner. Every other actor (Admin, User, System) remains
+  visible exactly as before; internal persistence (`finding_status_histories`)
+  is untouched. This matches the Owner-invisibility invariant
+  `App\Http\Controllers\Settings\UsersController` already establishes for user
+  management. MCP already withheld all actor identity unconditionally
+  (Phase 11) and is unaffected.
 
 ## What was verified in Phase 0
 

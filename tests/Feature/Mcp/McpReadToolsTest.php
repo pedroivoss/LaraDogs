@@ -324,3 +324,10 @@ it('says a scan came from MCP without ever exposing who initiated it (Owner priv
             ->not->toContain('password')->not->toContain('remember_token');
     }
 });
+
+it('returns only safe https references from get_finding (never javascript:, data:, file: or http:)', function () {
+    [, $scan] = mcpSeeded([mcpCandidate('a', ['references' => ['javascript:alert(1)', 'data:text/html,x', 'file:///etc/passwd', 'http://insecure.example.com', 'https://cwe.mitre.org/data/definitions/89.html']])]);
+    $result = McpWorld::call(GetFinding::class, ['finding_id' => Finding::query()->firstOrFail()->public_id])['finding'];
+
+    expect($result['references'])->toBe(['https://cwe.mitre.org/data/definitions/89.html']);
+});

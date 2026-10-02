@@ -194,3 +194,78 @@ export type GateDetail = GateSummary & {
     policy: unknown;
     rules: GateRuleResult[];
 };
+
+// ---- Remediation (Phase 12): deterministic, guidance-only ------------------
+
+export type RemediationValidationItem =
+    | { type: 'manual'; text: string }
+    | {
+          type: 'laradogs_tool';
+          name: string;
+          arguments: Record<string, string>;
+          text: string;
+      }
+    | {
+          type: 'laradogs_command';
+          command: string;
+          arguments: Record<string, string>;
+          text: string;
+      };
+
+export type RemediationPlan = {
+    finding_id: string;
+    project_id: string;
+    rule_id: string;
+    automation_level: 'guidance_only';
+    guidance_available: boolean;
+    lifecycle: { status: FindingStatus; actionable: boolean; note: string };
+    guidance: {
+        source: 'rule_catalog' | 'dependency_advisory' | 'none';
+        summary: string;
+        recommended_action: string | null;
+        steps: { order: number; text: string }[];
+        limitations: string[];
+    };
+    validation: RemediationValidationItem[];
+    references: { url: string }[];
+    warnings: { code: string; message: string }[];
+    source: {
+        state:
+            | 'same_revision'
+            | 'changed_since_finding'
+            | 'dirty'
+            | 'unavailable'
+            | 'not_versioned'
+            | 'unknown';
+        observed: {
+            type: string;
+            revision: string | null;
+            dirty: boolean | null;
+        } | null;
+        current: {
+            type: string;
+            revision: string | null;
+            dirty: boolean | null;
+        } | null;
+    };
+    quality_gate: {
+        impact: 'blocking' | 'non_blocking' | 'not_evaluated' | 'undetermined';
+        basis: string;
+        gate_scan_id: string | null;
+        evaluated_at: string | null;
+    };
+    context: {
+        framework: { type: string; laravel: string | null; php: string | null };
+        observed_on: string;
+    } | null;
+    dependency: {
+        ecosystem: 'composer' | 'npm';
+        package: string | null;
+        affected_versions: string | null;
+        fixed_version: string | null;
+        fix_available: boolean | null;
+        fix_is_semver_major: boolean | null;
+        direct_dependency: boolean | null;
+        advisory_id: string | null;
+    } | null;
+};

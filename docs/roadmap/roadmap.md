@@ -16,7 +16,7 @@
 | 9     | Git & Repository Integration         | **Complete** (local, read-only source metadata + source-integrity fail-closed semantics; see below)                                                                                                                 |
 | 10    | CI & GitHub Integration              | **Complete** for the CI command + GitHub Check Run reporting (see below); hosted-repository scope (GitHub API browsing, webhooks, managed clones, continuous monitoring) remains open                               |
 | 11    | MCP / IDE Integration                | **Complete** (stdio MCP server: read tools + async audit queuing, dedicated tokens; see below; `update_finding_status` deferred to Phase 12)                                                                        |
-| 12    | Remediation Workflow                 | Not started                                                                                                                                                                                                         |
+| 12    | Remediation Workflow                 | **V1 complete — guidance-only** (deterministic remediation plans in the Dashboard, CLI and MCP; no patches, auto-fix or PRs; see below)                                                                             |
 
 **Numbering note (Phase 9.1).** After Phase 9 the agreed order is 10 → CI &
 GitHub Integration, 11 → MCP / IDE Integration, 12 → Remediation Workflow.
@@ -477,6 +477,23 @@ command-scoped `safe.directory`). Scan History/Detail show revision/provenance;
 Docker runtime image now ships `git`. **Not** in this phase: fetch/pull/push,
 GitHub/GitLab API, webhooks, CI, MCP, managed clones. See
 [`../git/README.md`](../git/README.md).
+
+## What Phase 12 actually delivered
+
+A **guidance-only** remediation workflow: a deterministic, typed, bounded
+`RemediationPlan` per finding (recommended action, ordered steps, limitations,
+validation actions, safe `https` references, warnings, lifecycle, Phase 9
+source-state, persisted Quality Gate impact), built by a pure planner from
+rule-owned guidance (`RuleRemediationCatalog`, in lockstep with the bundled
+ruleset) and persisted Composer/npm advisory facts. Surfaces: a _Remediation_
+section on Finding Detail, `laradogs:finding:remediation [--json]`, and one
+read-only MCP tool, `laradogs.get_finding_remediation` (tool catalog 12 → 13,
+no new scope). No persistence, no AI, no target mutation, no patch/apply/PR.
+The shared evidence sanitizer moved to `App\Audit\Findings\Redaction\OutputSanitizer`
+so Dashboard, CLI and MCP use one path. Deliberately **not** delivered: patch
+suggestions, auto-fix, PR generation, LLM assistance, status-changing MCP tools
+(`update_finding_status` remains deferred). See
+[`../remediation/README.md`](../remediation/README.md).
 
 ## What Phase 11 actually delivered
 

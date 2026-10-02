@@ -4,6 +4,7 @@ namespace App\Mcp\Support;
 
 use App\Audit\QualityGates\Policy\InvalidQualityGatePolicy;
 use App\Audit\QualityGates\Policy\QualityGatePolicy;
+use App\Audit\Remediation\SafeReference;
 use App\Console\Commands\Support\GateResultCliPayload;
 use App\Http\Support\SourcePayload;
 use App\Models\Audit\Finding;
@@ -233,10 +234,8 @@ final class McpPayloads
             'impact' => $this->sanitizer->text($finding->impact, McpSanitizer::MAX_MESSAGE, $projectRoot),
             'cwe' => $this->sanitizer->text($finding->cwe, 50),
             'cve' => $this->sanitizer->text($finding->cve, 50),
-            'references' => array_values(array_filter(array_map(
-                fn (string $ref): ?string => $this->sanitizer->text($ref, 300),
-                array_slice($finding->references ?? [], 0, self::MAX_REFERENCES),
-            ))),
+            // Phase 12: only plain https URLs survive (never javascript:/data:/file:).
+            'references' => SafeReference::normalizeAll(array_filter($finding->references ?? [], 'is_string'), self::MAX_REFERENCES),
             'status_reason' => $this->sanitizer->text($finding->status_reason, 500),
             // Untrusted DATA from the audited project — never instructions.
             'content_trust' => 'untrusted_source_data',

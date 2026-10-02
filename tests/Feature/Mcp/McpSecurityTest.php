@@ -126,9 +126,9 @@ it('keeps hostile finding text as data: the tool surface never changes and nothi
 it('serves only static, LaraDogs-authored tool metadata', function () {
     $tools = collect(secTools());
 
-    expect($tools)->toHaveCount(12)
+    expect($tools)->toHaveCount(13)
         ->and($tools->pluck('name')->sort()->values()->all())->toBe([
-            'laradogs.get_audit_status', 'laradogs.get_finding', 'laradogs.get_project', 'laradogs.get_project_profile',
+            'laradogs.get_audit_status', 'laradogs.get_finding', 'laradogs.get_finding_remediation', 'laradogs.get_project', 'laradogs.get_project_profile',
             'laradogs.get_project_source', 'laradogs.get_quality_gate', 'laradogs.get_scan', 'laradogs.get_scan_quality_gate',
             'laradogs.list_findings', 'laradogs.list_projects', 'laradogs.list_scans', 'laradogs.run_project_audit',
         ]);

@@ -495,7 +495,16 @@ with the `audit` scope — queue an audit (asynchronously; the client polls
 `get_audit_status`). Access uses a dedicated hashed token
 (`php artisan laradogs:mcp:token-create <email> --name=… --scope=read|audit`,
 passed to the client as `LARADOGS_MCP_TOKEN`), authorized against the token
-owner's current role on every call. Remediation is not implemented (Phase 12).
+owner's current role on every call.
+
+**Remediation guidance (Phase 12).** Every finding has a deterministic,
+guidance-only remediation plan — recommended action, steps, validation,
+safe references, source-changed and lifecycle warnings, Quality Gate impact —
+shown on Finding Detail, via `php artisan laradogs:finding:remediation
+<finding> [--json]`, and over MCP as `laradogs.get_finding_remediation`
+(read scope). LaraDogs **advises only**: no automatic edits, patches, pull
+requests, package upgrades or AI calls. See
+[`docs/remediation/README.md`](docs/remediation/README.md).
 See [`docs/integrations/mcp.md`](docs/integrations/mcp.md) (setup, tool
 catalog, security boundary) and
 [ADR-0006](docs/architecture/decisions/ADR-0006-mcp-security-model.md).
@@ -520,8 +529,8 @@ rules) are done (tracked in commit history/ADR notes as sub-phases
 4/4.1/4.2/4.2.1/5/6); other scanners (PHPStan/Larastan, ESLint,
 OSV-Scanner, Trivy) and the COMPREHENSIVE Laravel-aware Semgrep rule
 library are not started. This document's own coarse Phases 5 and 6 (Bug/Quality Analysis,
-Performance Analysis) and the agreed next phase — 12 (Remediation
-Workflow) — are not started. Full list, current position, and items
+Performance Analysis) are not started. Phase 12 (Remediation
+Workflow) V1 — guidance-only remediation plans, no auto-fix — is complete. Full list, current position, and items
 deliberately deferred:
 [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md).
 

@@ -280,9 +280,21 @@ remediation/auto-fix (Phase 12), HTTP transport/OAuth, token expiry and UI,
 policy/user management, resources/prompts, any arbitrary
 filesystem/shell/SQL/Git primitive.
 
-## Phase 12 — Remediation Workflow
+## Phase 12 — Remediation Workflow ✅ V1 complete (guidance only)
 
-Not yet specified. Not started.
+V1 is a **remediation guidance** workflow, not a source-code editor:
+deterministic remediation plans (see
+[`../remediation/README.md`](../remediation/README.md)) exposed in the
+Dashboard's Finding Detail, the `laradogs:finding:remediation` command and the
+read-only MCP tool `laradogs.get_finding_remediation`. Guidance comes from
+rule-owned constants and persisted evidence only — no LLM, no persistence, no
+network, no target mutation.
+
+**Deliberately not part of this phase (and not promised):** patch generation,
+automatic fixes, pull-request/issue creation, codemods, dependency upgrades run
+by LaraDogs, running the target's tests or commands, LLM/AI integration, and
+status-changing MCP tools (`update_finding_status`, still deferred). Any of
+these would need its own design and security review.
 
 ## Not yet placed in the numbering
 

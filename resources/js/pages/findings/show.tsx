@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { CodeSnippet } from '@/components/audit/code-snippet';
 import { ConfidenceBadge } from '@/components/audit/confidence-badge';
 import { FindingStatusBadge } from '@/components/audit/finding-status-badge';
+import { RemediationSection } from '@/components/audit/remediation-section';
 import { SeverityBadge } from '@/components/audit/severity-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,7 +32,12 @@ import {
     FINDING_STATUSES_REQUIRING_REASON,
     type FindingStatus,
 } from '@/types/audit';
-import type { AnalyzerCategory, Confidence, Severity } from '@/types/audit';
+import type {
+    AnalyzerCategory,
+    Confidence,
+    RemediationPlan,
+    Severity,
+} from '@/types/audit';
 
 type FindingDetail = {
     id: string;
@@ -48,7 +54,6 @@ type FindingDetail = {
     recommendation: string | null;
     cwe: string | null;
     cve: string | null;
-    references: string[] | null;
     first_seen_at: string;
     last_seen_at: string;
     project: { id: string; name: string };
@@ -72,6 +77,8 @@ type HistoryEntry = {
     reason: string | null;
     actor_type: string;
     actor_identifier: string | null;
+    /** Set only when the actor's identity is withheld (Owner privacy). */
+    actor_label: string | null;
     created_at: string;
 };
 
@@ -88,10 +95,12 @@ export default function FindingShow({
     finding,
     occurrences,
     status_history,
+    remediation,
 }: {
     finding: FindingDetail;
     occurrences: Occurrence[];
     status_history: HistoryEntry[];
+    remediation: RemediationPlan;
 }) {
     const [dialogOpen, setDialogOpen] = useState(false);
     const form = useForm<{ status: FindingStatus | ''; reason: string }>({
@@ -264,11 +273,7 @@ export default function FindingShow({
                                 {finding.impact}
                             </Section>
                         )}
-                        {finding.recommendation && (
-                            <Section title="Recommendation">
-                                {finding.recommendation}
-                            </Section>
-                        )}
+                        <RemediationSection plan={remediation} />
 
                         <Card>
                             <CardHeader>
@@ -341,7 +346,8 @@ export default function FindingShow({
                                             </p>
                                         )}
                                         <p className="text-muted-foreground text-xs">
-                                            {entry.actor_type}
+                                            {entry.actor_label ??
+                                                entry.actor_type}
                                             {entry.actor_identifier &&
                                                 ` (${entry.actor_identifier})`}{' '}
                                             ·{' '}
@@ -393,30 +399,6 @@ export default function FindingShow({
                                 </DetailRow>
                             </CardContent>
                         </Card>
-
-                        {finding.references &&
-                            finding.references.length > 0 && (
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle className="text-sm">
-                                            References
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-1">
-                                        {finding.references.map((reference) => (
-                                            <a
-                                                key={reference}
-                                                href={reference}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="text-primary block truncate text-sm hover:underline"
-                                            >
-                                                {reference}
-                                            </a>
-                                        ))}
-                                    </CardContent>
-                                </Card>
-                            )}
                     </div>
                 </div>
             </div>

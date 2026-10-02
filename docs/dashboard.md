@@ -129,6 +129,42 @@ shipped code (previously reserved/unused, per that enum's own docblock).
   Phase 3.2 tests already proved were safe — this phase adds no new
   suppression semantics, only a UI for the existing ones.
 
+**Owner privacy in status history (Phase 12.1).** `actor_identifier`
+persists exactly what was recorded at transition time (an email, or `null`
+for `ActorType::System`) — that internal history is never rewritten. What
+`FindingsController` sends to the browser is filtered: an entry whose
+`actor_identifier` matches the **current** Owner's email is shown to any
+viewer other than the Owner as `actor_identifier: null` /
+`actor_label: "Privileged user"`, matching the Owner-invisibility invariant
+`UsersController` already establishes for user management. Every other
+actor (Admin, User) remains visible exactly as before — only the Owner,
+of which there is exactly one, is special-cased. The Owner sees their own
+identity in their own history entries.
+
+## Remediation on Finding Detail (Phase 12)
+
+The finding detail page renders a _Remediation_ card from the deterministic
+`RemediationPlan` (Inertia prop `remediation`, evaluated lazily by
+`FindingRemediationService` — the same read model the CLI and MCP use). It
+replaces the earlier plain "Recommendation" block and the unvalidated
+reference list: lifecycle note (resolved / false positive / ignored / accepted
+risk are shown as reference-only), warnings (source changed / dirty /
+unavailable / not versioned / unknown), recommended action, steps,
+limitations, dependency facts, validation actions, `https`-only references
+(`rel="noopener noreferrer"`), and _Guidance only_, source-state and Quality
+Gate badges.
+
+- Plain escaped React text only: no raw HTML, no Markdown, no HTML-injection API
+  (asserted by a source guard test).
+- **No edit/apply/fix control** — LaraDogs advises; it never changes code.
+- Finding _lists_ and project pages carry no remediation payload and do no
+  per-row remediation work.
+- One bounded Git inspection of the _current_ source is performed on this page
+  (the existing Phase 9 inspector), only to compare with the revision where the
+  finding was observed.
+
+See [`remediation/README.md`](remediation/README.md).
+
 ## Audit trigger design (Phase 7.1.4: async queue + scheduler)
 
 **Superseded.** Phase 7 originally shipped without a Dashboard trigger —
